@@ -185,6 +185,57 @@ app.post("/generate-plan", async (req, res) => {
   }
 });
 
+// Add this new route just before app.listen
+
+app.post("/test-supabase-insert", async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: "Missing user_id" });
+  }
+
+  try {
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/02_02_programs`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify([
+        {
+          user_id: user_id,
+          goal_summary: "Test Program - Hansy Hype Edition",
+          duration_week: 8,
+          is_active: true
+        }
+      ])
+    });
+
+    const result = await insertRes.json();
+
+    if (!insertRes.ok) {
+      console.error("Insert failed:", result);
+      return res.status(500).json({ error: "Failed to insert test program", details: result });
+    }
+
+    return res.json({
+      message: "Test program inserted successfully!",
+      inserted: result
+    });
+  } catch (err) {
+    console.error("Insert error:", err);
+    return res.status(500).json({ error: "Something went wrong during insert" });
+  }
+});
+
+// Start server
+app.listen(3000, () => {
+  console.log("Server running on port 3000");
+});
+
+
 app.listen(3000, () => {
   console.log("Server running on port 3000");
 });
