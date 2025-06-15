@@ -46,7 +46,6 @@ app.post("/generate-plan", async (req, res) => {
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
   try {
-    // Helper to fetch from Supabase
     const fetchFromSupabase = async (table) => {
       const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
         headers: {
@@ -74,7 +73,6 @@ app.post("/generate-plan", async (req, res) => {
     const limitations = limitationsData[0] || {};
     const benchmarks = benchmarkData[0] || {};
 
-    // 💡 Build the anonymized client profile
     const clientProfile = {
       user_id,
       goal: intake.goal,
@@ -98,16 +96,102 @@ app.post("/generate-plan", async (req, res) => {
     };
 
     const prompt = `
-You are a world-class fitness coach.
+You are an expert in:
+- Athletic personal training
+- Functional coaching and race prep (e.g., HYROX, Spartan)
+- Physical therapy and injury prevention
+- Nutrition for performance and recovery
+- Your coach persona is auto-selected based on client goal (e.g., Triathlon Coach for endurance prep, CrossFit L2 for strength, etc.)
 
-Below is a fully anonymized profile of a client. Using this, generate a ${intake.program_duration_weeks}-week training program tailored to their availability, goals, and fitness benchmarks.
+You have 10+ years of experience designing progressive, individualized training programs.
 
-Only return a valid JSON object that follows the structure below. Do not include explanations or commentary.
+Using the profile below, create a ${intake.program_duration_weeks}-week fitness program. The plan must follow a block/phase structure appropriate to the client’s fitness level, program length, and goal.
 
 -- CLIENT PROFILE --
 ${JSON.stringify(clientProfile, null, 2)}
 
--- FORMAT & STRUCTURE --
+-- BLOCK STRUCTURE RULES
+- Use a block breakdown like 4+4+4, 5+4+4+3, etc.
+- Each block must have a clear focus (e.g., base, build, peak, taper)
+- Choose the block structure to match:
+  1. Total program duration
+  2. Client’s goal (e.g., taper for event prep)
+  3. Fitness level (e.g., longer base for beginners)
+
+-- WORKOUT DESIGN – WEEKLY FORMAT
+- Return a structured day-by-day table (Mon–Sun)
+- Display all 7 days each week (no gaps)
+- Each active day must include:
+  - Warm-up
+  - Clearly themed workout with specific exercises
+  - Cooldown and/or mobility
+  - Estimated duration
+  - A "structure_type" field to classify the workout type. Use one of the following values:
+    ["straight_sets", "superset", "circuit", "amrap", "emom", "steady_state", "drop_set", "pyramid", "cluster", "recovery"]
+
+-- SESSION DURATION RULES
+- If a number is provided (e.g., 45), assume range of 35–55 minutes
+- If a range is provided (e.g., 45–60), respect that range
+- If not defined, default to ~45 minutes ±10
+- If duration exceeds 55 minutes, explain why
+
+-- EXCEPTIONS TO WARM-UP/COOLDOWN
+- Do not include warm-up or cooldown for:
+  - Prebuilt studio classes (e.g., Barry’s, Spin, Yoga)
+  - Non-gym-based light recovery activities (e.g., outdoor walk, casual home yoga)
+- Gym-based conditioning sessions (e.g., treadmill, elliptical, circuits) must include warm-up and cooldown unless labeled as a studio class
+
+-- SCHEDULING RULES
+- Respect stated training days/week:
+  - If a range is given (e.g., 3–5), vary it week to week without exceeding the upper bound
+  - If a fixed number is given (e.g., 4), deliver exactly that number each week
+- Include 1–2 rest days per week
+- Never allow more than 2 consecutive rest days, even across week boundaries
+- Optional mobility or recovery sessions are allowed only if they do not exceed the client’s max training days/week
+
+-- OPTIONAL WORKOUTS
+- Must include:
+  - Theme label
+  - Workout description
+  - Duration
+  - Warm-up/cooldown only if intensity requires it
+
+-- EQUIPMENT & GYM LOGIC
+- Do not assign home-based workouts unless home equipment is listed
+- If a full-service gym is listed, assume access to it for all custom workouts
+- If boutique studio credits are listed:
+  - Do not exceed the total across the entire program
+  - Only assign classes that match the training goal and that day’s theme
+  - Label simply as: “Barry’s Class” or “Spin Class” (no breakdown of class content)
+  - If none are listed, assume zero boutique access
+  - If credits are exhausted:
+    - Do NOT assign additional studio classes
+    - Do NOT use labels like “Studio Class (No Credit)” or “Barry’s (No Credits Left)”
+    - Instead, create a gym-based circuit or cardio session and label accordingly
+
+-- GOAL ALIGNMENT & TRAINING STYLE
+- Plan must reflect the client’s primary goal and preferred style(s)
+- Apply progressive overload within each block:
+  - For beginners: progress modestly week to week
+  - For intermediate/advanced: increase volume, complexity, or intensity more aggressively
+- Match training style(s) selected in intake:
+  - Foundational Strength
+  - Circuit/Conditioning-Based
+  - Event Block Training
+  - Hybrid/Concurrent
+  - Skill Development
+  - Recovery-Oriented
+
+-- FORMATTING & CLARITY
+- Circuits and supersets must specify round counts (e.g., “Repeat 3 rounds of:”)
+- EMOMs and intervals must specify total duration (e.g., “EMOM – 18 Minutes Total”)
+- If using rotating formats: clarify cycles or logic (e.g., “3 stations x 6 rounds”)
+- Use clean formatting and structured weekly tables
+- Include estimated duration for every session
+- Include short explanations only as needed (e.g., long sessions or credit use)
+
+-- OUTPUT FORMAT REQUIREMENTS
+Return the complete plan as a valid JSON object with this structure:
 {
   "program_title": "string",
   "blocks": [
@@ -121,6 +205,7 @@ ${JSON.stringify(clientProfile, null, 2)}
               "day": "string (e.g., Monday)",
               "focus_area": "string",
               "duration_min": integer,
+              "structure_type": "string",
               "warmup": ["string", ...],
               "main_set": ["string", ...],
               "cooldown": ["string", ...]
@@ -131,7 +216,8 @@ ${JSON.stringify(clientProfile, null, 2)}
     }
   ]
 }
-`;
+
+Only return the raw JSON object — no extra commentary, formatting, or tables.`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -155,7 +241,6 @@ ${JSON.stringify(clientProfile, null, 2)}
 
     const workoutJson = JSON.parse(data.choices[0].message.content);
 
-    // Save summary of plan to programs table
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/02_02_programs`, {
       method: "POST",
       headers: {
@@ -189,7 +274,6 @@ ${JSON.stringify(clientProfile, null, 2)}
   }
 });
 
-// 🧪 Test insert route
 app.post("/test-supabase-insert", async (req, res) => {
   const { user_id } = req.body;
 
