@@ -10,12 +10,42 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// 🔍 NEW ROUTE: /test-supabase?user_id=abc123
+app.get("/test-supabase", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: "Missing user_id" });
+
+  try {
+    const userRes = await fetch(`${SUPABASE_URL}/rest/v1/00_users?user_id=eq.${user_id}`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    });
+
+    const intakeRes = await fetch(`${SUPABASE_URL}/rest/v1/02_01_program_intake?user_id=eq.${user_id}`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    });
+
+    const user = await userRes.json();
+    const intake = await intakeRes.json();
+
+    return res.json({ user, intake });
+  } catch (err) {
+    console.error("Supabase fetch error:", err);
+    return res.status(500).json({ error: "Failed to fetch data from Supabase" });
+  }
+});
+
+// EXISTING: /generate-plan
 app.post("/generate-plan", async (req, res) => {
   const { user_id } = req.body;
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
   try {
-    // 1. Fetch intake and user data from Supabase
     const userRes = await fetch(`${SUPABASE_URL}/rest/v1/00_users?user_id=eq.${user_id}`, {
       headers: {
         apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -41,7 +71,6 @@ app.post("/generate-plan", async (req, res) => {
     const user = userData[0];
     const intake = intakeData[0];
 
-    // 2. Build the GPT prompt
     const prompt = `
     You are an expert in:
     - Athletic personal training
@@ -101,7 +130,6 @@ app.post("/generate-plan", async (req, res) => {
     Only return the raw JSON object — no extra text, commentary, or formatting.
     `;
 
-    // 3. Call OpenAI API
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -124,7 +152,6 @@ app.post("/generate-plan", async (req, res) => {
 
     const workoutJson = JSON.parse(data.choices[0].message.content);
 
-    // 4. Store results (simplified: just insert into programs table for now)
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/02_02_programs`, {
       method: "POST",
       headers: {
