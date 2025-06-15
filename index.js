@@ -219,6 +219,9 @@ Return the complete plan as a valid JSON object with this structure:
 
 Only return the raw JSON object — no extra commentary, formatting, or tables.`;
 
+console.log("✅ Loaded OPENAI_API_KEY?", !!OPENAI_API_KEY);
+console.log("🔑 First 6 characters of OPENAI_API_KEY:", OPENAI_API_KEY?.slice(0, 6));
+    
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
