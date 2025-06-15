@@ -226,7 +226,7 @@ Only return the raw JSON object — no extra commentary, formatting, or tables.`
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4",
+        model: "gpt-4-turbo",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
       }),
