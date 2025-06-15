@@ -22,6 +22,7 @@ app.post("/generate-plan", async (req, res) => {
         Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       },
     });
+
     const intakeRes = await fetch(`${SUPABASE_URL}/rest/v1/02_01_program_intake?user_id=eq.${user_id}`, {
       headers: {
         apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -29,14 +30,18 @@ app.post("/generate-plan", async (req, res) => {
       },
     });
 
-    const user = (await userRes.json())[0];
-    const intake = (await intakeRes.json())[0];
+    const userData = await userRes.json();
+    const intakeData = await intakeRes.json();
 
-    if (!user || !intake) {
+    if (!userData || userData.length === 0 || !intakeData || intakeData.length === 0) {
+      console.error("User or intake not found", { userData, intakeData });
       return res.status(404).json({ error: "User or intake not found" });
     }
 
-    // 2. Build the GPT prompt (simplified here, you’ll inject full v4.5 prompt later)
+    const user = userData[0];
+    const intake = intakeData[0];
+
+    // 2. Build the GPT prompt
     const prompt = `
     You are an expert in:
     - Athletic personal training
@@ -96,7 +101,6 @@ app.post("/generate-plan", async (req, res) => {
     Only return the raw JSON object — no extra text, commentary, or formatting.
     `;
 
-
     // 3. Call OpenAI API
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -112,6 +116,12 @@ app.post("/generate-plan", async (req, res) => {
     });
 
     const data = await openaiRes.json();
+
+    if (!data.choices || !data.choices[0]?.message?.content) {
+      console.error("OpenAI response error:", data);
+      return res.status(500).json({ error: "Failed to generate response from OpenAI" });
+    }
+
     const workoutJson = JSON.parse(data.choices[0].message.content);
 
     // 4. Store results (simplified: just insert into programs table for now)
@@ -133,12 +143,17 @@ app.post("/generate-plan", async (req, res) => {
     });
 
     if (!insertRes.ok) {
+      const errText = await insertRes.text();
+      console.error("Failed to insert program:", errText);
       return res.status(500).json({ error: "Failed to insert program" });
     }
 
-    return res.json({ message: "Workout program created successfully!", title: workoutJson.program_title });
+    return res.json({
+      message: "Workout program created successfully!",
+      title: workoutJson.program_title,
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Unhandled error:", err);
     return res.status(500).json({ error: "Something went wrong" });
   }
 });
