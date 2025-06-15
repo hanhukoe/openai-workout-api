@@ -207,7 +207,7 @@ app.post("/test-supabase-insert", async (req, res) => {
         {
           user_id: user_id,
           goal_summary: "Test Program - Hansy Hype Edition",
-          duration_week: 8,
+          duration_weeks: 8,
           is_active: true
         }
       ])
