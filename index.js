@@ -68,7 +68,48 @@ app.post("/generate-plan", async (req, res) => {
       }
     };
 
-    const prompt = `... your full prompt text here including motivational quote and JSON structure ...`;
+    const prompt = `
+You are an expert in:
+- Athletic personal training
+- Functional coaching and race prep (e.g., HYROX, Spartan)
+- Physical therapy and injury prevention
+- Nutrition for performance and recovery
+- Your coach persona is auto-selected based on client goal (e.g., Triathlon Coach for endurance prep, CrossFit L2 for strength, etc.)
+
+You have 10+ years of experience designing progressive, individualized training programs.
+
+Using the profile below, create a ${intake.program_duration_weeks}-week fitness program. The plan must follow a block/phase structure appropriate to the client’s fitness level, program length, and goal.
+
+Also include a motivational quote each day aligned with that day’s theme.
+
+Return the complete plan as a valid JSON object with this structure:
+{
+  "program_title": "string",
+  "blocks": [
+    {
+      "title": "string",
+      "weeks": [
+        {
+          "week_number": integer,
+          "days": [
+            {
+              "day": "string",
+              "focus_area": "string",
+              "duration_min": integer,
+              "structure_type": "string",
+              "warmup": [ { "name": "string" }, ... ],
+              "main_set": [ { "name": "string", "sets": integer, "reps": integer, "rest_after_sec": integer }, ... ],
+              "cooldown": [ { "name": "string" }, ... ],
+              "quote": "string"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+Only return the JSON object. Do not include commentary or formatting explanations.
+`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -78,7 +119,10 @@ app.post("/generate-plan", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: `Client profile:\n${JSON.stringify(clientProfile, null, 2)}` }
+        ],
         temperature: 0.7,
       }),
     });
@@ -107,7 +151,6 @@ app.post("/generate-plan", async (req, res) => {
       const block = workoutJson.blocks[blockIndex];
       const block_id = crypto.randomUUID();
 
-      // Insert block
       await fetch(`${SUPABASE_URL}/rest/v1/02_03_blocks`, {
         method: "POST",
         headers: headersWithAuth,
@@ -120,7 +163,6 @@ app.post("/generate-plan", async (req, res) => {
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
-          // Insert schedule
           await fetch(`${SUPABASE_URL}/rest/v1/02_04_schedule`, {
             method: "POST",
             headers: headersWithAuth,
@@ -136,7 +178,6 @@ app.post("/generate-plan", async (req, res) => {
             ]),
           });
 
-          // Insert workout with quote
           await fetch(`${SUPABASE_URL}/rest/v1/02_05_workout`, {
             method: "POST",
             headers: headersWithAuth,
@@ -152,7 +193,6 @@ app.post("/generate-plan", async (req, res) => {
             ]),
           });
 
-          // Helper to insert workout blocks and exercises
           const insertBlockWithExercises = async (phaseName, blockType, exercises) => {
             if (!exercises || exercises.length === 0) return;
             const blockID = crypto.randomUUID();
@@ -164,11 +204,9 @@ app.post("/generate-plan", async (req, res) => {
                 {
                   id: blockID,
                   workout_id,
-                  block_order: 1, // Optional refinement
+                  block_order: 1,
                   block_type: blockType,
                   title: `${day.focus_area} – ${phaseName}`,
-                  duration_sec: null,
-                  notes: null,
                 },
               ]),
             });
@@ -209,8 +247,8 @@ app.post("/generate-plan", async (req, res) => {
       title: workoutJson.program_title,
     });
   } catch (err) {
-  console.error("🔥 Full Error:", err);
-  res.status(500).json({ error: "Something went wrong", details: err.message });
+    console.error("🔥 Full Error:", err);
+    res.status(500).json({ error: "Something went wrong", details: err.message });
   }
 });
 
