@@ -208,8 +208,8 @@ app.post("/generate-plan", async (req, res) => {
       title: workoutJson.program_title,
     });
   } catch (err) {
-    console.error("Unhandled error:", err);
-    res.status(500).json({ error: "Something went wrong" });
+  console.error("🔥 Full Error:", err);
+  res.status(500).json({ error: "Something went wrong", details: err.message });
   }
 });
 
