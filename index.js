@@ -84,6 +84,7 @@ app.post("/generate-plan", async (req, res) => {
     });
 
     const data = await openaiRes.json();
+    console.log("🧠 OpenAI Raw Response:", data.choices[0].message.content);
     const workoutJson = JSON.parse(data.choices[0].message.content);
 
     // Insert program
