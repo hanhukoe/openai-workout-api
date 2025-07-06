@@ -26,13 +26,20 @@ app.post("/generate-plan", async (req, res) => {
 
   try {
     const fetchFromSupabase = async (table) => {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
-        headers: headersWithAuth,
-      });
-      return response.json();
+      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
+      const response = await fetch(url, { headers: headersWithAuth });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Error fetching ${table}:`, errorText);
+        return null;
+      }
+
+      const json = await response.json();
+      console.log(`✅ Fetched from ${table}:`, JSON.stringify(json, null, 2));
+      return json;
     };
 
-    // Fetch intake-related data
     const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
       fetchFromSupabase("program_intake"),
       fetchFromSupabase("full_service_gyms"),
@@ -55,7 +62,6 @@ app.post("/generate-plan", async (req, res) => {
       goal: intake.primary_goal,
       target_date: intake.primary_goal_date,
       program_duration_weeks: intake.program_duration_weeks,
-      // Sample fallback structure (you can customize)
       days_per_week: 4,
       session_length_minutes: 45,
       limitations: limitations.limitations_list || "",
@@ -87,23 +93,20 @@ app.post("/generate-plan", async (req, res) => {
     const data = await openaiRes.json();
     const workoutJson = JSON.parse(data.choices[0].message.content);
 
-    // Insert Program
     const program_id = crypto.randomUUID();
     await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
       method: "POST",
       headers: headersWithAuth,
-      body: JSON.stringify([
-        {
-          program_id,
-          user_id,
-          program_title: workoutJson.program_title,
-          goal_summary: workoutJson.program_title,
-          program_duration_weeks: intake.program_duration_weeks,
-          program_start_date: intake.primary_goal_date,
-          is_active: true,
-          created_at: new Date().toISOString()
-        }
-      ])
+      body: JSON.stringify([{
+        program_id,
+        user_id,
+        program_title: workoutJson.program_title,
+        goal_summary: workoutJson.program_title,
+        program_duration_weeks: intake.program_duration_weeks,
+        program_start_date: intake.primary_goal_date,
+        is_active: true,
+        created_at: new Date().toISOString()
+      }])
     });
 
     for (let blockIndex = 0; blockIndex < workoutJson.blocks.length; blockIndex++) {
@@ -129,7 +132,6 @@ app.post("/generate-plan", async (req, res) => {
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
-          // Insert into program_schedule
           await fetch(`${SUPABASE_URL}/rest/v1/program_schedule`, {
             method: "POST",
             headers: headersWithAuth,
@@ -147,7 +149,6 @@ app.post("/generate-plan", async (req, res) => {
             }])
           });
 
-          // Insert into workouts
           await fetch(`${SUPABASE_URL}/rest/v1/workouts`, {
             method: "POST",
             headers: headersWithAuth,
@@ -164,7 +165,6 @@ app.post("/generate-plan", async (req, res) => {
             }])
           });
 
-          // Insert workout_blocks and exercises
           const insertBlockWithExercises = async (phaseName, blockType, exercises) => {
             if (!exercises || exercises.length === 0) return;
 
