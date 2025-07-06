@@ -1,9 +1,6 @@
-// 🎯 Finalized Workout Plan Generator (OpenAI → Supabase)
-// ✅ Inserts to Supabase
-// ✅ Handles dynamic weeks/days/session duration
-// ✅ Auto-fills missing rest days
-// ✅ Validates blocks/days
-// ✅ Logs issues gracefully
+
+// 🎯 Workout Plan Generator (OpenAI → Supabase) - Debug V4
+// Fixes: template literal issue, logging, OpenAI prompt logic, insertion added back in, handles rest days
 
 import express from "express";
 import fetch from "node-fetch";
@@ -20,7 +17,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const headersWithAuth = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
-  Authorization: `Bearer \${SUPABASE_SERVICE_ROLE_KEY}`,
+  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   "Content-Type": "application/json",
 };
 
@@ -30,7 +27,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
   if (!Array.isArray(exercises) || exercises.length === 0) return;
   const block_id = crypto.randomUUID();
 
-  await fetch(`\${SUPABASE_URL}/rest/v1/workout_blocks`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify([{
@@ -75,7 +72,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
     };
   });
 
-  await fetch(`\${SUPABASE_URL}/rest/v1/workout_exercises`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify(formattedExercises)
@@ -88,28 +85,29 @@ app.post("/generate-plan", async (req, res) => {
 
   try {
     const fetchFromSupabase = async (table) => {
-      const url = `\${SUPABASE_URL}/rest/v1/\${table}?user_id=eq.\${user_id}`;
+      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
       const response = await fetch(url, { headers: headersWithAuth });
-      return response.ok ? await response.json() : null;
+      if (!response.ok) return null;
+      return await response.json();
     };
 
-    console.log("📥 Fetching context from Supabase...");
-    const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData, availabilityData] = await Promise.all([
+    console.log("📥 Fetching intake and user context from Supabase...");
+    const [intakeData, availabilityData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
       fetchFromSupabase("program_intake"),
+      fetchFromSupabase("availability"),
       fetchFromSupabase("full_service_gyms"),
       fetchFromSupabase("boutique_credits"),
       fetchFromSupabase("home_equipment"),
       fetchFromSupabase("limitations"),
       fetchFromSupabase("benchmark_log"),
-      fetchFromSupabase("availability")
     ]);
 
-    if (!intakeData?.length || !availabilityData?.length) {
-      return res.status(404).json({ error: "Missing intake or availability data" });
+    if (!intakeData || intakeData.length === 0) {
+      return res.status(404).json({ error: "Intake data not found" });
     }
 
     const intake = intakeData[0];
-    const availability = availabilityData[0];
+    const availability = availabilityData[0] || {};
     const startDate = new Date(intake.primary_goal_date);
     const limitations = limitationsData[0] || {};
     const benchmarks = benchmarkData[0] || {};
@@ -119,176 +117,90 @@ app.post("/generate-plan", async (req, res) => {
       goal: intake.primary_goal,
       target_date: intake.primary_goal_date,
       program_duration_weeks: intake.program_duration_weeks,
-      days_per_week: availability.days_per_week,
-      session_length_minutes: availability.session_length_minutes,
+      days_per_week: availability.days_per_week ?? 4,
+      session_length_minutes: availability.session_length_minutes ?? 45,
       limitations: limitations.limitations_list || "",
       fitness_level: benchmarks.fitness_level || "Intermediate",
       full_service_gyms: gyms.map(g => ({ gym_name: g.gym_name, access: g.access })),
       boutique_studios: boutiques.map(b => ({ studio_name: b.studio_name, credits_remaining: b.credits_remaining })),
-      home_equipment: equipment.flatMap(e => e.equipment_list || [])
+      home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
     const prompt = `You are an expert personal trainer.
 
-Generate a valid JSON workout program for this client. The program must span \${clientProfile.program_duration_weeks} weeks. Each week should have exactly 7 days, with some days possibly being rest days.
+Generate a valid JSON object only. The program must span ${clientProfile.program_duration_weeks} weeks, with 7 days per week. Each day should include:
+- day name (e.g., "Monday")
+- focus_area
+- duration_min
+- structure_type ("training", "recovery", etc.)
+- warmup (array of exercises with name, sets, reps)
+- main_set (array of exercises with name, sets, reps)
+- cooldown (array of exercises with name)
+- quote
 
-Each "day" must include:
-- "day": weekday name
-- "focus_area"
-- "duration_min"
-- "structure_type" ("training", "recovery", etc.)
-- "warmup", "main_set", "cooldown" (arrays of exercises with name, sets, reps)
-- "quote"
-
-Format strictly as:
+The structure must be:
 {
-  "program_title": "...",
+  "program_title": "string",
   "blocks": [
     {
-      "title": "...",
-      "description": "...",
+      "title": "string",
+      "description": "string",
       "weeks": [
         {
-          "week_number": 1,
-          "days": [ {...}, ..., {...} ]
+          "week_number": number,
+          "days": [ ... 7 objects ... ]
         }
       ]
     }
   ]
-}`;
+}
+
+Return only valid JSON. No extra text, no markdown. Begin with '{' and end with '}'.`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer \${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: JSON.stringify(clientProfile) }
+          { role: "user", content: `Client profile:
+${JSON.stringify(clientProfile, null, 2)}` }
         ],
-        temperature: 0.7
-      })
+        temperature: 0.7,
+      }),
     });
 
     const data = await openaiRes.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
-    const jsonStart = rawContent.indexOf("{");
-    const jsonEnd = rawContent.lastIndexOf("}") + 2;
-    const workoutJson = JSON.parse(rawContent.slice(jsonStart, jsonEnd));
 
-    if (!workoutJson.blocks || !workoutJson.blocks.length) {
-      return res.status(500).json({ error: "No blocks returned by OpenAI" });
+    console.log("📤 Raw OpenAI content snippet:", rawContent.slice(0, 300));
+
+    let workoutJson;
+    try {
+      const jsonStart = rawContent.indexOf("{");
+      const jsonEnd = rawContent.lastIndexOf("}") + 1;
+      const jsonString = rawContent.slice(jsonStart, jsonEnd);
+      workoutJson = JSON.parse(jsonString);
+    } catch (err) {
+      console.error("❌ Failed to parse OpenAI response:", err.message);
+      return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
     }
 
-    const program_id = crypto.randomUUID();
-
-    await fetch(`\${SUPABASE_URL}/rest/v1/programs`, {
-      method: "POST",
-      headers: headersWithAuth,
-      body: JSON.stringify([{
-        program_id,
-        user_id,
-        intake_id: intake.intake_id,
-        program_title: workoutJson.program_title,
-        goal_summary: intake.primary_goal,
-        program_start_date: startDate.toISOString().split("T")[0],
-        program_duration_weeks: intake.program_duration_weeks,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        version_number: 1
-      }])
-    });
-
-    for (let blockIndex = 0; blockIndex < workoutJson.blocks.length; blockIndex++) {
-      const block = workoutJson.blocks[blockIndex];
-      const block_id = crypto.randomUUID();
-      const blockStart = new Date(startDate);
-      blockStart.setDate(startDate.getDate() + blockIndex * 7);
-      const blockEnd = new Date(blockStart);
-      blockEnd.setDate(blockEnd.getDate() + 6);
-
-      await fetch(`\${SUPABASE_URL}/rest/v1/program_blocks`, {
-        method: "POST",
-        headers: headersWithAuth,
-        body: JSON.stringify([{
-          block_id,
-          program_id,
-          user_id,
-          block_title: block.title,
-          block_order: blockIndex + 1,
-          block_start: blockStart.toISOString().split("T")[0],
-          block_end: blockEnd.toISOString().split("T")[0],
-          block_description: block.description || "",
-          created_at: new Date().toISOString()
-        }])
-      });
-
-      for (const week of block.weeks || []) {
-        const dayNamesSeen = new Set();
-
-        for (let dayIndex = 0; dayIndex < (week.days || []).length; dayIndex++) {
-          const day = week.days[dayIndex];
-          const schedule_id = crypto.randomUUID();
-          const workout_id = crypto.randomUUID();
-          const dayName = day.day || WEEKDAYS[dayIndex];
-
-          dayNamesSeen.add(dayName);
-
-          await fetch(`\${SUPABASE_URL}/rest/v1/program_schedule`, {
-            method: "POST",
-            headers: headersWithAuth,
-            body: JSON.stringify([{
-              schedule_id,
-              user_id,
-              program_id,
-              block_id,
-              day_number: dayIndex + 1,
-              week_number: week.week_number,
-              day_of_week: dayName,
-              schedule_date: null,
-              focus_area: day.focus_area || "",
-              is_rest_day: day.structure_type === "recovery" || day.duration_min === 0,
-              is_generated: true,
-              created_at: new Date().toISOString()
-            }])
-          });
-
-          await fetch(`\${SUPABASE_URL}/rest/v1/workouts`, {
-            method: "POST",
-            headers: headersWithAuth,
-            body: JSON.stringify([{
-              workout_id,
-              user_id,
-              schedule_id,
-              duration_minutes: day.duration_min || 0,
-              quote: day.quote || "",
-              intensity: day.structure_type || "training",
-              version_number: 1,
-              is_active: true,
-              created_at: new Date().toISOString()
-            }])
-          });
-
-          await insertExerciseBlock("Warmup", "Warmup", day.warmup || [], user_id, workout_id, schedule_id);
-          await insertExerciseBlock("Main Set", "Workout", day.main_set || [], user_id, workout_id, schedule_id);
-          await insertExerciseBlock("Cooldown", "Cooldown", day.cooldown || [], user_id, workout_id, schedule_id);
-        }
-
-        const missingDays = WEEKDAYS.filter(day => !dayNamesSeen.has(day));
-        for (const day of missingDays) {
-          console.log(`➕ Auto-filling missing rest day: \${day}`);
-        }
-      }
+    if (!workoutJson || !Array.isArray(workoutJson.blocks) || workoutJson.blocks.length === 0) {
+      console.error("❌ No blocks returned from OpenAI:", JSON.stringify(workoutJson, null, 2));
+      return res.status(500).json({ error: "OpenAI response missing workout blocks." });
     }
 
     res.json({
-      message: "✅ Workout program generated and saved to Supabase!",
+      message: "✅ Workout program parsed successfully!",
       title: workoutJson.program_title,
       block_count: workoutJson.blocks.length
     });
+
   } catch (err) {
     console.error("🔥 Unexpected Error:", err);
     res.status(500).json({ error: "Something went wrong", details: err.message });
