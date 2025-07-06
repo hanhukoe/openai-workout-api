@@ -159,8 +159,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
 
     const data = await openaiRes.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
-    console.log("📤 FULL OpenAI response:
-", rawContent);
+    console.log("📤 FULL OpenAI response:", rawContent);
 
     let workoutJson;
     try {
