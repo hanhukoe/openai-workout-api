@@ -125,9 +125,19 @@ app.post("/generate-plan", async (req, res) => {
     };
 
     const prompt = `
-You are an expert personal trainer. Generate a JSON-only 12-week program with 7 days/week.
-Each "day" should include: day name, focus_area, duration, structure_type, warmup, main_set, cooldown, and quote.
-Respond ONLY with JSON starting with { and ending with }.
+You are an expert personal trainer. Generate a JSON-only 12-week program with 7 days per week.
+Each day must include:
+- "day": (e.g., "Monday")
+- "focus_area": a short fitness goal (e.g., Strength, Mobility)
+- "duration_min": integer
+- "structure_type": training or recovery
+- "warmup": array of exercises
+- "main_set": array of exercises
+- "cooldown": array of exercises
+- "quote": a motivational quote
+
+Do not include markdown, notes, or extra commentary.
+Your output must be valid JSON only, starting with { and ending with }.
 `;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -189,7 +199,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
       const block = workoutJson.blocks[blockIndex];
       const block_id = crypto.randomUUID();
       const blockStart = new Date(startDate);
-      blockStart.setDate(startDate.getDate() + blockIndex * 7 * 1);
+      blockStart.setDate(startDate.getDate() + blockIndex * 7 * block.weeks.length);
       const blockEnd = new Date(blockStart);
       blockEnd.setDate(blockEnd.getDate() + 6);
 
@@ -209,9 +219,11 @@ ${JSON.stringify(clientProfile, null, 2)}` }
         }])
       });
 
-      for (const week of block.weeks || []) {
-        for (let dayIndex = 0; dayIndex < WEEKDAYS.length; dayIndex++) {
-          const day = week.days?.find(d => d.day === WEEKDAYS[dayIndex]) || {};
+      const weeks = Array.isArray(block.weeks) ? block.weeks : [];
+      for (const week of weeks) {
+        const days = Array.isArray(week.days) ? week.days : [];
+        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+          const day = days[dayIndex];
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
