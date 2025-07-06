@@ -20,6 +20,63 @@ const headersWithAuth = {
   "Content-Type": "application/json",
 };
 
+const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, schedule_id) => {
+  if (!Array.isArray(exercises) || exercises.length === 0) return;
+
+  const block_id = crypto.randomUUID();
+
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
+    method: "POST",
+    headers: headersWithAuth,
+    body: JSON.stringify([{
+      block_id,
+      workout_id,
+      user_id,
+      block_order: 1,
+      block_title: title,
+      block_type: type,
+      rounds: null,
+      duration_seconds: null,
+      notes: "",
+      created_at: new Date().toISOString()
+    }])
+  });
+
+  const formattedExercises = exercises.map((ex, i) => {
+    const durationInSeconds =
+      ex.duration_sec != null
+        ? ex.duration_sec
+        : ex.duration_min != null
+        ? ex.duration_min * 60
+        : null;
+
+    return {
+      id: crypto.randomUUID(),
+      user_id,
+      workout_id,
+      schedule_id,
+      block_id,
+      workout_section: type,
+      sequence_num: i + 1,
+      exercise_name: ex.name || "Unnamed",
+      exercise_sets: ex.sets ?? null,
+      exercise_reps: ex.reps ?? null,
+      exercise_weight: ex.weight_kg ?? null,
+      exercise_duration_seconds: durationInSeconds,
+      exercise_speed: ex.speed ?? null,
+      exercise_distance_meters: ex.distance_m ?? null,
+      exercise_notes: ex.notes || "",
+      exercise_description: ""
+    };
+  });
+
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
+    method: "POST",
+    headers: headersWithAuth,
+    body: JSON.stringify(formattedExercises)
+  });
+};
+
 app.post("/generate-plan", async (req, res) => {
   const { user_id } = req.body;
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
@@ -138,25 +195,6 @@ The structure must be: {
       return res.status(500).json({ error: "OpenAI did not return a valid workout program." });
     }
 
-    for (const block of workoutJson.blocks) {
-      if (!Array.isArray(block.weeks)) block.weeks = [];
-
-      for (const week of block.weeks) {
-        if (!Array.isArray(week.days)) week.days = [];
-
-        for (const day of week.days) {
-          day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
-          day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
-          day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
-          day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 45;
-          day.focus_area = day.focus_area || "General Fitness";
-          day.structure_type = day.structure_type || "training";
-          day.quote = day.quote || "";
-        }
-      }
-    }
-
-    // ✅ Supabase Insertion Starts Here
     const program_id = crypto.randomUUID();
 
     await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
@@ -193,9 +231,18 @@ The structure must be: {
         }])
       });
 
-      for (const week of block.weeks) {
-        for (let dayIndex = 0; dayIndex < week.days.length; dayIndex++) {
+      for (const week of block.weeks || []) {
+        for (let dayIndex = 0; dayIndex < (week.days || []).length; dayIndex++) {
           const day = week.days[dayIndex];
+
+          day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+          day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+          day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+          day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 45;
+          day.focus_area = day.focus_area || "General Fitness";
+          day.structure_type = day.structure_type || "training";
+          day.quote = day.quote || "";
+
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
@@ -233,56 +280,9 @@ The structure must be: {
             }])
           });
 
-          const insertExerciseBlock = async (title, type, exercises) => {
-            if (!exercises || exercises.length === 0) return;
-            const block_id = crypto.randomUUID();
-
-            await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
-              method: "POST",
-              headers: headersWithAuth,
-              body: JSON.stringify([{
-                block_id,
-                workout_id,
-                user_id,
-                block_order: 1,
-                block_title: title,
-                block_type: type,
-                rounds: null,
-                duration_seconds: null,
-                notes: "",
-                created_at: new Date().toISOString()
-              }])
-            });
-
-            const formattedExercises = exercises.map((ex, i) => ({
-              id: crypto.randomUUID(),
-              user_id,
-              workout_id,
-              schedule_id,
-              block_id,
-              workout_section: type,
-              sequence_num: i + 1,
-              exercise_name: ex.name || "Unnamed",
-              exercise_sets: ex.sets ?? null,
-              exercise_reps: ex.reps ?? null,
-              exercise_weight: ex.weight_kg ?? null,
-              exercise_duration_seconds: ex.duration_per_set_sec ?? null,
-              exercise_speed: ex.speed ?? null,
-              exercise_distance_meters: ex.distance_m ?? null,
-              exercise_notes: ex.notes || "",
-              exercise_description: ""
-            }));
-
-            await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
-              method: "POST",
-              headers: headersWithAuth,
-              body: JSON.stringify(formattedExercises)
-            });
-          };
-
-          await insertExerciseBlock("Warmup", "Warmup", day.warmup);
-          await insertExerciseBlock("Main Set", "Workout", day.main_set);
-          await insertExerciseBlock("Cooldown", "Cooldown", day.cooldown);
+          await insertExerciseBlock("Warmup", "Warmup", day.warmup, user_id, workout_id, schedule_id);
+          await insertExerciseBlock("Main Set", "Workout", day.main_set, user_id, workout_id, schedule_id);
+          await insertExerciseBlock("Cooldown", "Cooldown", day.cooldown, user_id, workout_id, schedule_id);
         }
       }
     }
