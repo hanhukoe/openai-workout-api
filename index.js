@@ -1,6 +1,5 @@
-
-// 🎯 Workout Plan Generator (OpenAI → Supabase) - Debug V4
-// Fixes: template literal issue, logging, OpenAI prompt logic, insertion added back in, handles rest days
+// 🎯 Workout Plan Generator (OpenAI → Supabase) — Debug V5
+// ✅ Dynamic prompt, Supabase inserts, logging, error handling
 
 import express from "express";
 import fetch from "node-fetch";
@@ -17,7 +16,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const headersWithAuth = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
-  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  Authorization: \`Bearer \${SUPABASE_SERVICE_ROLE_KEY}\`,
   "Content-Type": "application/json",
 };
 
@@ -27,7 +26,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
   if (!Array.isArray(exercises) || exercises.length === 0) return;
   const block_id = crypto.randomUUID();
 
-  await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
+  await fetch(\`\${SUPABASE_URL}/rest/v1/workout_blocks\`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify([{
@@ -72,7 +71,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
     };
   });
 
-  await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
+  await fetch(\`\${SUPABASE_URL}/rest/v1/workout_exercises\`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify(formattedExercises)
@@ -85,16 +84,15 @@ app.post("/generate-plan", async (req, res) => {
 
   try {
     const fetchFromSupabase = async (table) => {
-      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
+      const url = \`\${SUPABASE_URL}/rest/v1/\${table}?user_id=eq.\${user_id}\`;
       const response = await fetch(url, { headers: headersWithAuth });
       if (!response.ok) return null;
       return await response.json();
     };
 
-    console.log("📥 Fetching intake and user context from Supabase...");
-    const [intakeData, availabilityData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
+    console.log("📥 Fetching user context...");
+    const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
       fetchFromSupabase("program_intake"),
-      fetchFromSupabase("availability"),
       fetchFromSupabase("full_service_gyms"),
       fetchFromSupabase("boutique_credits"),
       fetchFromSupabase("home_equipment"),
@@ -107,7 +105,6 @@ app.post("/generate-plan", async (req, res) => {
     }
 
     const intake = intakeData[0];
-    const availability = availabilityData[0] || {};
     const startDate = new Date(intake.primary_goal_date);
     const limitations = limitationsData[0] || {};
     const benchmarks = benchmarkData[0] || {};
@@ -117,8 +114,8 @@ app.post("/generate-plan", async (req, res) => {
       goal: intake.primary_goal,
       target_date: intake.primary_goal_date,
       program_duration_weeks: intake.program_duration_weeks,
-      days_per_week: availability.days_per_week ?? 4,
-      session_length_minutes: availability.session_length_minutes ?? 45,
+      days_per_week: intake.days_per_week ?? 4,
+      session_length_minutes: intake.session_length_minutes ?? 45,
       limitations: limitations.limitations_list || "",
       fitness_level: benchmarks.fitness_level || "Intermediate",
       full_service_gyms: gyms.map(g => ({ gym_name: g.gym_name, access: g.access })),
@@ -126,9 +123,11 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = `You are an expert personal trainer.
+    const prompt = \`You are an expert personal trainer.
 
-Generate a valid JSON object only. The program must span ${clientProfile.program_duration_weeks} weeks, with 7 days per week. Each day should include:
+Design a progressive training program over \${intake.program_duration_weeks} weeks using principles of block periodization. Structure the program logically with clear phases (e.g., Base, Build, Peak), appropriate for the user's fitness level and goals.
+
+For each week, include 7 days. Each day should include:
 - day name (e.g., "Monday")
 - focus_area
 - duration_min
@@ -138,37 +137,19 @@ Generate a valid JSON object only. The program must span ${clientProfile.program
 - cooldown (array of exercises with name)
 - quote
 
-The structure must be:
-{
-  "program_title": "string",
-  "blocks": [
-    {
-      "title": "string",
-      "description": "string",
-      "weeks": [
-        {
-          "week_number": number,
-          "days": [ ... 7 objects ... ]
-        }
-      ]
-    }
-  ]
-}
-
-Return only valid JSON. No extra text, no markdown. Begin with '{' and end with '}'.`;
+Return valid JSON only. Begin with '{' and end with '}'. No extra commentary.\`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: \`Bearer \${OPENAI_API_KEY}\`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: `Client profile:
-${JSON.stringify(clientProfile, null, 2)}` }
+          { role: "user", content: \`Client profile:\n\${JSON.stringify(clientProfile, null, 2)}\` }
         ],
         temperature: 0.7,
       }),
@@ -176,8 +157,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
 
     const data = await openaiRes.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
-
-    console.log("📤 Raw OpenAI content snippet:", rawContent.slice(0, 300));
+    console.log("📤 OpenAI raw content:", rawContent.slice(0, 500));
 
     let workoutJson;
     try {
@@ -186,15 +166,17 @@ ${JSON.stringify(clientProfile, null, 2)}` }
       const jsonString = rawContent.slice(jsonStart, jsonEnd);
       workoutJson = JSON.parse(jsonString);
     } catch (err) {
-      console.error("❌ Failed to parse OpenAI response:", err.message);
-      return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
+      console.error("❌ JSON parse failed:", err.message);
+      return res.status(500).json({ error: "Invalid JSON from OpenAI" });
     }
 
     if (!workoutJson || !Array.isArray(workoutJson.blocks) || workoutJson.blocks.length === 0) {
-      console.error("❌ No blocks returned from OpenAI:", JSON.stringify(workoutJson, null, 2));
-      return res.status(500).json({ error: "OpenAI response missing workout blocks." });
+      console.error("❌ OpenAI returned no blocks:", JSON.stringify(workoutJson));
+      return res.status(500).json({ error: "Missing or empty blocks array from OpenAI." });
     }
 
+    // Ready for insert — you can re-enable inserts here safely
+    console.log("✅ Parsed program title:", workoutJson.program_title);
     res.json({
       message: "✅ Workout program parsed successfully!",
       title: workoutJson.program_title,
