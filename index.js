@@ -75,7 +75,7 @@ app.post("/generate-plan", async (req, res) => {
     const prompt = `
 You are an expert personal trainer...
 
-[keep your full prompt definition here, JSON structure, and instructions]
+[insert your full prompt and required JSON structure here]
     `;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -97,24 +97,59 @@ You are an expert personal trainer...
     const data = await openaiRes.json();
     console.log("🧠 OpenAI Raw Response:", JSON.stringify(data, null, 2));
 
+    // 🛡️ Robust JSON Parsing + Guardrails
     let workoutJson;
+    const rawContent = data.choices?.[0]?.message?.content || "";
+
     try {
-      workoutJson = JSON.parse(data.choices?.[0]?.message?.content || "");
+      const sanitized = rawContent
+        .replace(/^```(?:json)?/gm, "")
+        .replace(/```$/gm, "")
+        .replace(/^#+\s.+$/gm, "") // remove headers like ### Title
+        .trim();
+
+      const jsonStart = sanitized.indexOf("{");
+      const jsonEnd = sanitized.lastIndexOf("}") + 1;
+
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object boundaries found.");
+
+      const jsonString = sanitized.slice(jsonStart, jsonEnd);
+      const noTrailingCommas = jsonString.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+
+      workoutJson = JSON.parse(noTrailingCommas);
     } catch (err) {
-      console.error("❌ Failed to parse OpenAI response:", err.message);
-      res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
-      return;
+      console.error("❌ Failed to parse OpenAI response:");
+      console.error("Raw content:", rawContent);
+      console.error("Error:", err.message);
+      return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
     }
 
     if (!workoutJson || !Array.isArray(workoutJson.blocks)) {
-      console.error("❌ No blocks array in OpenAI output:", workoutJson);
-      res.status(500).json({ error: "OpenAI did not return a valid workout program." });
-      return;
+      console.error("❌ Invalid program format: 'blocks' must be an array.");
+      return res.status(500).json({ error: "OpenAI did not return a valid workout program." });
     }
 
-    // ✅ This is where you insert your Supabase insert logic
-    // Be sure all `res.status(...)` calls remain inside this route handler.
+    // ✅ Deep sanitize each block/week/day
+    for (const block of workoutJson.blocks) {
+      if (!Array.isArray(block.weeks)) block.weeks = [];
 
+      for (const week of block.weeks) {
+        if (!Array.isArray(week.days)) week.days = [];
+
+        for (const day of week.days) {
+          day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+          day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+          day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+
+          day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 45;
+          day.focus_area = day.focus_area || "General Fitness";
+          day.structure_type = day.structure_type || "training";
+          day.quote = day.quote || "";
+        }
+      }
+    }
+
+    // 👇 Now ready for Supabase insertion or next stage
     res.json({
       message: "✅ Workout program generated and parsed!",
       title: workoutJson.program_title
