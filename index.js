@@ -124,34 +124,24 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = `
-You are an expert personal trainer. Generate a JSON-only 12-week program with 7 days per week.
-Each day must include:
-- "day": (e.g., "Monday")
-- "focus_area": a short fitness goal (e.g., Strength, Mobility)
-- "duration_min": integer
-- "structure_type": training or recovery
-- "warmup": array of exercises
-- "main_set": array of exercises
-- "cooldown": array of exercises
-- "quote": a motivational quote
-
-Do not include markdown, notes, or extra commentary.
-Your output must be valid JSON only, starting with { and ending with }.
-`;
+    const prompt = \`
+You are an expert personal trainer. Generate a JSON-only 12-week program with 7 days/week.
+Each "day" should include: day name, focus_area, duration, structure_type, warmup, main_set, cooldown, and quote.
+Respond ONLY with JSON starting with { and ending with }.
+\`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: \`Bearer \${OPENAI_API_KEY}\`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: `Client profile:
-${JSON.stringify(clientProfile, null, 2)}` }
+          { role: "user", content: \`Client profile:
+\${JSON.stringify(clientProfile, null, 2)}\` }
         ],
         temperature: 0.7,
       }),
@@ -178,7 +168,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
 
     const program_id = crypto.randomUUID();
 
-    await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
+    await fetch(\`\${SUPABASE_URL}/rest/v1/programs\`, {
       method: "POST",
       headers: headersWithAuth,
       body: JSON.stringify([{
@@ -195,15 +185,15 @@ ${JSON.stringify(clientProfile, null, 2)}` }
       }])
     });
 
-    for (let blockIndex = 0; blockIndex < workoutJson.blocks.length; blockIndex++) {
+    for (let blockIndex = 0; blockIndex < (workoutJson.blocks || []).length; blockIndex++) {
       const block = workoutJson.blocks[blockIndex];
       const block_id = crypto.randomUUID();
       const blockStart = new Date(startDate);
-      blockStart.setDate(startDate.getDate() + blockIndex * 7 * block.weeks.length);
+      blockStart.setDate(startDate.getDate() + blockIndex * 7 * 1);
       const blockEnd = new Date(blockStart);
       blockEnd.setDate(blockEnd.getDate() + 6);
 
-      await fetch(`${SUPABASE_URL}/rest/v1/program_blocks`, {
+      await fetch(\`\${SUPABASE_URL}/rest/v1/program_blocks\`, {
         method: "POST",
         headers: headersWithAuth,
         body: JSON.stringify([{
@@ -227,7 +217,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
-          await fetch(`${SUPABASE_URL}/rest/v1/program_schedule`, {
+          await fetch(\`\${SUPABASE_URL}/rest/v1/program_schedule\`, {
             method: "POST",
             headers: headersWithAuth,
             body: JSON.stringify([{
@@ -246,7 +236,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
             }])
           });
 
-          await fetch(`${SUPABASE_URL}/rest/v1/workouts`, {
+          await fetch(\`\${SUPABASE_URL}/rest/v1/workouts\`, {
             method: "POST",
             headers: headersWithAuth,
             body: JSON.stringify([{
@@ -271,8 +261,8 @@ ${JSON.stringify(clientProfile, null, 2)}` }
 
     res.json({
       message: "✅ Workout program generated and saved to Supabase!",
-      title: workoutJson.program_title,
-      block_count: workoutJson.blocks.length
+      title: workoutJson.program_title || "Unnamed Program",
+      block_count: Array.isArray(workoutJson.blocks) ? workoutJson.blocks.length : 0
     });
 
   } catch (err) {
