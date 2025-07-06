@@ -1,5 +1,5 @@
-// 🎯 Workout Plan Generator (OpenAI → Supabase) - Debug V8
-// Strict schema, tight prompt, validated format, and ready for Supabase insert
+// 🎯 Workout Plan Generator (OpenAI → Supabase) - V9
+// Re-enables inserts, includes availability, limitations, preferences in prompt
 
 import express from "express";
 import fetch from "node-fetch";
@@ -22,26 +22,85 @@ const headersWithAuth = {
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, schedule_id) => {
+  if (!Array.isArray(exercises) || exercises.length === 0) return;
+  const block_id = crypto.randomUUID();
+
+  console.log("🧱 Inserting workout block:", title);
+
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
+    method: "POST",
+    headers: headersWithAuth,
+    body: JSON.stringify([{
+      block_id,
+      workout_id,
+      user_id,
+      block_order: 1,
+      block_title: title,
+      block_type: type,
+      rounds: null,
+      duration_seconds: null,
+      notes: "",
+      created_at: new Date().toISOString()
+    }])
+  });
+
+  const formattedExercises = exercises.map((ex, i) => {
+    const durationInSeconds =
+      ex.duration_sec != null
+        ? ex.duration_sec
+        : ex.duration_min != null
+        ? ex.duration_min * 60
+        : null;
+
+    return {
+      id: crypto.randomUUID(),
+      user_id,
+      workout_id,
+      schedule_id,
+      block_id,
+      workout_section: type,
+      sequence_num: i + 1,
+      exercise_name: ex.name || "Unnamed",
+      exercise_sets: ex.sets ?? null,
+      exercise_reps: ex.reps ?? null,
+      exercise_weight: ex.weight_kg ?? null,
+      exercise_duration_seconds: durationInSeconds,
+      exercise_speed: ex.speed ?? null,
+      exercise_distance_meters: ex.distance_m ?? null,
+      exercise_notes: ex.notes || "",
+      exercise_description: ""
+    };
+  });
+
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
+    method: "POST",
+    headers: headersWithAuth,
+    body: JSON.stringify(formattedExercises)
+  });
+};
+
 app.post("/generate-plan", async (req, res) => {
   const { user_id } = req.body;
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
-  const fetchFromSupabase = async (table) => {
-    const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
-    const response = await fetch(url, { headers: headersWithAuth });
-    if (!response.ok) return null;
-    return await response.json();
-  };
-
   try {
-    console.log("📥 Fetching user context from Supabase...");
-    const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
+    const fetchFromSupabase = async (table) => {
+      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
+      const response = await fetch(url, { headers: headersWithAuth });
+      if (!response.ok) return null;
+      return await response.json();
+    };
+
+    console.log("📥 Fetching user context...");
+    const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData, availabilityData] = await Promise.all([
       fetchFromSupabase("program_intake"),
       fetchFromSupabase("full_service_gyms"),
       fetchFromSupabase("boutique_credits"),
       fetchFromSupabase("home_equipment"),
       fetchFromSupabase("limitations"),
       fetchFromSupabase("benchmark_log"),
+      fetchFromSupabase("availability")
     ]);
 
     if (!intakeData || intakeData.length === 0) {
@@ -49,8 +108,10 @@ app.post("/generate-plan", async (req, res) => {
     }
 
     const intake = intakeData[0];
+    const startDate = new Date(intake.primary_goal_date);
     const limitations = limitationsData[0] || {};
     const benchmarks = benchmarkData[0] || {};
+    const availability = availabilityData[0] || {};
 
     const clientProfile = {
       user_id,
@@ -59,6 +120,7 @@ app.post("/generate-plan", async (req, res) => {
       program_duration_weeks: intake.program_duration_weeks,
       days_per_week: intake.days_per_week ?? 4,
       session_length_minutes: intake.session_length_minutes ?? 45,
+      unavailable_days: availability.unavailable_days || [],
       limitations: limitations.limitations_list || "",
       fitness_level: benchmarks.fitness_level || "Intermediate",
       full_service_gyms: gyms.map(g => ({ gym_name: g.gym_name, access: g.access })),
@@ -66,46 +128,29 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = `You are a certified expert personal trainer and coach.
+    const prompt = `You are a certified personal trainer.
 
-Design a workout program that lasts for ${clientProfile.program_duration_weeks} weeks and includes 7 days per week.
+Using the user's profile, design a personalized, progressive training program over ${clientProfile.program_duration_weeks} weeks. Structure it into logical blocks (e.g., Base, Build, Peak). Each week has 7 days. Each day includes:
+- day_name (Monday, Tuesday, etc.)
+- focus_area
+- duration_min
+- structure_type (e.g., training, recovery)
+- warmup (array of exercises: name, sets, reps)
+- main_set (same format)
+- cooldown (array: name)
+- quote
 
-Each week belongs to a structured training block (such as Base, Build, Peak, Recovery). Use progressive overload and principles of periodization.
+❗ DO NOT assign workouts on unavailable days: ${clientProfile.unavailable_days.join(", ") || "none"}.
+❗ Accommodate these limitations: ${clientProfile.limitations || "none"}.
+💡 Keep sessions to ~${clientProfile.session_length_minutes} min and ${clientProfile.days_per_week} days/week.
+🏋️ Use appropriate equipment: ${clientProfile.home_equipment.join(", ") || "bodyweight only"}.
 
-The required JSON structure is:
-{
-  "program_title": "string",
-  "blocks": [
-    {
-      "title": "string",
-      "description": "string",
-      "weeks": [
-        {
-          "week_number": number,
-          "days": [
-            {
-              "day_name": "string",
-              "focus_area": "string",
-              "duration_min": number,
-              "structure_type": "training | recovery | rest",
-              "warmup": [ { "name": "string", "sets": number, "reps": number } ],
-              "main_set": [ { "name": "string", "sets": number, "reps": number } ],
-              "cooldown": [ { "name": "string" } ],
-              "quote": "string"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-Respond ONLY with valid JSON. No extra commentary, no markdown, no text.`;
+Return a valid JSON object only. Start with { and end with }.`
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: "Bearer " + OPENAI_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -121,7 +166,7 @@ ${JSON.stringify(clientProfile, null, 2)}` }
 
     const data = await openaiRes.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
-    console.log("📤 FULL OpenAI response:", rawContent.slice(0, 500));
+    console.log("📤 FULL OpenAI response (truncated):", rawContent.slice(0, 1000));
 
     let workoutJson;
     try {
@@ -130,19 +175,37 @@ ${JSON.stringify(clientProfile, null, 2)}` }
       const jsonString = rawContent.slice(jsonStart, jsonEnd);
       workoutJson = JSON.parse(jsonString);
     } catch (err) {
-      console.error("❌ Failed to parse OpenAI response:", err.message);
+      console.error("❌ JSON parse failed:", err.message);
       return res.status(500).json({ error: "Invalid JSON from OpenAI" });
     }
 
-    if (!workoutJson?.blocks || !Array.isArray(workoutJson.blocks) || workoutJson.blocks.length === 0) {
-      console.error("❌ OpenAI response missing valid 'blocks':", JSON.stringify(workoutJson, null, 2));
-      return res.status(500).json({ error: "OpenAI response missing or invalid 'blocks' format." });
+    if (!workoutJson || !Array.isArray(workoutJson.blocks) || workoutJson.blocks.length === 0) {
+      console.error("❌ OpenAI returned no blocks:", JSON.stringify(workoutJson));
+      return res.status(500).json({ error: "Missing or empty blocks array from OpenAI." });
     }
 
-    // 🟢 Success!
-    console.log("✅ Parsed program title:", workoutJson.program_title);
+    const program_id = crypto.randomUUID();
+    console.log("💾 Inserting program:", workoutJson.program_title);
+
+    await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
+      method: "POST",
+      headers: headersWithAuth,
+      body: JSON.stringify([{
+        program_id,
+        user_id,
+        intake_id: intake.intake_id,
+        program_title: workoutJson.program_title,
+        goal_summary: intake.primary_goal,
+        program_start_date: startDate.toISOString().split("T")[0],
+        program_duration_weeks: intake.program_duration_weeks,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        version_number: 1
+      }])
+    });
+
     res.json({
-      message: "✅ Workout program parsed successfully!",
+      message: "✅ Workout program parsed and inserted successfully!",
       title: workoutJson.program_title,
       block_count: workoutJson.blocks.length
     });
