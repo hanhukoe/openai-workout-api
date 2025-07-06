@@ -1,5 +1,5 @@
 
-// 🎯 Updated Workout Plan Generator (OpenAI → Supabase) with Debug Logs & Safe Guards
+// 🎯 Debugged and Fixed Workout Plan Generator (OpenAI → Supabase)
 
 import express from "express";
 import fetch from "node-fetch";
@@ -25,6 +25,8 @@ const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satur
 const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, schedule_id) => {
   if (!Array.isArray(exercises) || exercises.length === 0) return;
   const block_id = crypto.randomUUID();
+
+  console.log(`🧱 Inserting exercise block: ${title} (${type}) with ${exercises.length} exercises`);
 
   await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
     method: "POST",
@@ -90,6 +92,8 @@ app.post("/generate-plan", async (req, res) => {
       return await response.json();
     };
 
+    console.log("📥 Fetching intake and user context from Supabase...");
+
     const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData] = await Promise.all([
       fetchFromSupabase("program_intake"),
       fetchFromSupabase("full_service_gyms"),
@@ -99,8 +103,8 @@ app.post("/generate-plan", async (req, res) => {
       fetchFromSupabase("benchmark_log"),
     ]);
 
-    console.log("📦 Intake Data:", intakeData);
     if (!intakeData || intakeData.length === 0) {
+      console.warn("⚠️ Intake data not found");
       return res.status(404).json({ error: "Intake data not found" });
     }
 
@@ -123,40 +127,38 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = \`
+    const prompt = `
 You are an expert personal trainer. Generate a JSON-only 12-week program with 7 days/week.
 Each "day" should include: day name, focus_area, duration, structure_type, warmup, main_set, cooldown, and quote.
 Respond ONLY with JSON starting with { and ending with }.
-\`;
+`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${OPENAI_API_KEY}\`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: \`Client profile:\n\${JSON.stringify(clientProfile, null, 2)}\` }
+          { role: "user", content: `Client profile:
+${JSON.stringify(clientProfile, null, 2)}` }
         ],
         temperature: 0.7,
       }),
     });
 
     const data = await openaiRes.json();
-    console.log("🧠 OpenAI Response:", JSON.stringify(data, null, 2));
-
-    if (!data.choices?.[0]?.message?.content) {
-      throw new Error("OpenAI returned no message content.");
-    }
-
-    const rawContent = data.choices[0].message.content;
+    const rawContent = data.choices?.[0]?.message?.content || "";
 
     let workoutJson;
     try {
-      const sanitized = rawContent.replace(/^```(?:json)?/gm, "").replace(/```$/gm, "").trim();
+      const sanitized = rawContent
+        .replace(/^```(?:json)?/gm, "")
+        .replace(/```$/gm, "")
+        .trim();
       const jsonStart = sanitized.indexOf("{");
       const jsonEnd = sanitized.lastIndexOf("}") + 1;
       const jsonString = sanitized.slice(jsonStart, jsonEnd);
@@ -166,13 +168,15 @@ Respond ONLY with JSON starting with { and ending with }.
       return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
     }
 
-    if (!workoutJson || typeof workoutJson !== "object" || !Array.isArray(workoutJson.blocks)) {
-      throw new Error("Invalid workout program structure from OpenAI");
+    if (!workoutJson.blocks || workoutJson.blocks.length === 0) {
+      console.error("❌ No blocks returned from OpenAI");
+      return res.status(500).json({ error: "No workout blocks found." });
     }
 
     const program_id = crypto.randomUUID();
 
-    await fetch(\`\${SUPABASE_URL}/rest/v1/programs\`, {
+    console.log("📦 Inserting program metadata...");
+    await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
       method: "POST",
       headers: headersWithAuth,
       body: JSON.stringify([{
@@ -189,16 +193,17 @@ Respond ONLY with JSON starting with { and ending with }.
       }])
     });
 
-    const blocks = Array.isArray(workoutJson.blocks) ? workoutJson.blocks : [];
-    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
-      const block = blocks[blockIndex];
+    for (let blockIndex = 0; blockIndex < workoutJson.blocks.length; blockIndex++) {
+      const block = workoutJson.blocks[blockIndex];
       const block_id = crypto.randomUUID();
       const blockStart = new Date(startDate);
       blockStart.setDate(startDate.getDate() + blockIndex * 7);
       const blockEnd = new Date(blockStart);
       blockEnd.setDate(blockEnd.getDate() + 6);
 
-      await fetch(\`\${SUPABASE_URL}/rest/v1/program_blocks\`, {
+      console.log(`📚 Inserting block ${block.title} (${blockIndex + 1})...`);
+
+      await fetch(`${SUPABASE_URL}/rest/v1/program_blocks`, {
         method: "POST",
         headers: headersWithAuth,
         body: JSON.stringify([{
@@ -222,7 +227,7 @@ Respond ONLY with JSON starting with { and ending with }.
           const schedule_id = crypto.randomUUID();
           const workout_id = crypto.randomUUID();
 
-          await fetch(\`\${SUPABASE_URL}/rest/v1/program_schedule\`, {
+          await fetch(`${SUPABASE_URL}/rest/v1/program_schedule`, {
             method: "POST",
             headers: headersWithAuth,
             body: JSON.stringify([{
@@ -241,7 +246,7 @@ Respond ONLY with JSON starting with { and ending with }.
             }])
           });
 
-          await fetch(\`\${SUPABASE_URL}/rest/v1/workouts\`, {
+          await fetch(`${SUPABASE_URL}/rest/v1/workouts`, {
             method: "POST",
             headers: headersWithAuth,
             body: JSON.stringify([{
@@ -264,12 +269,10 @@ Respond ONLY with JSON starting with { and ending with }.
       }
     }
 
-    const blockCount = Array.isArray(workoutJson?.blocks) ? workoutJson.blocks.length : 0;
-
     res.json({
       message: "✅ Workout program generated and saved to Supabase!",
-      title: workoutJson?.program_title || "Unnamed Program",
-      block_count: blockCount
+      title: workoutJson.program_title,
+      block_count: workoutJson.blocks.length
     });
 
   } catch (err) {
