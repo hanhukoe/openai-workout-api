@@ -1,5 +1,6 @@
-// 🎯 Workout Plan Generator (OpenAI → Supabase) — Debug V5
-// ✅ Dynamic prompt, Supabase inserts, logging, error handling
+
+// 🎯 Workout Plan Generator (OpenAI → Supabase) - Debug V8
+// Includes: inserts re-enabled, full OpenAI response logging, and syntax fixes
 
 import express from "express";
 import fetch from "node-fetch";
@@ -16,7 +17,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const headersWithAuth = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
-  Authorization: \`Bearer \${SUPABASE_SERVICE_ROLE_KEY}\`,
+  Authorization: "Bearer " + SUPABASE_SERVICE_ROLE_KEY,
   "Content-Type": "application/json",
 };
 
@@ -26,7 +27,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
   if (!Array.isArray(exercises) || exercises.length === 0) return;
   const block_id = crypto.randomUUID();
 
-  await fetch(\`\${SUPABASE_URL}/rest/v1/workout_blocks\`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify([{
@@ -71,7 +72,7 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
     };
   });
 
-  await fetch(\`\${SUPABASE_URL}/rest/v1/workout_exercises\`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify(formattedExercises)
@@ -84,7 +85,7 @@ app.post("/generate-plan", async (req, res) => {
 
   try {
     const fetchFromSupabase = async (table) => {
-      const url = \`\${SUPABASE_URL}/rest/v1/\${table}?user_id=eq.\${user_id}\`;
+      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
       const response = await fetch(url, { headers: headersWithAuth });
       if (!response.ok) return null;
       return await response.json();
@@ -123,9 +124,9 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = \`You are an expert personal trainer.
+    const prompt = `You are an expert personal trainer.
 
-Design a progressive training program over \${intake.program_duration_weeks} weeks using principles of block periodization. Structure the program logically with clear phases (e.g., Base, Build, Peak), appropriate for the user's fitness level and goals.
+Design a progressive training program over ${intake.program_duration_weeks} weeks using principles of block periodization. Structure the program logically with clear phases (e.g., Base, Build, Peak), appropriate for the user's fitness level and goals.
 
 For each week, include 7 days. Each day should include:
 - day name (e.g., "Monday")
@@ -137,19 +138,20 @@ For each week, include 7 days. Each day should include:
 - cooldown (array of exercises with name)
 - quote
 
-Return valid JSON only. Begin with '{' and end with '}'. No extra commentary.\`;
+Return valid JSON only. Begin with '{' and end with '}'. No extra commentary.`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${OPENAI_API_KEY}\`,
+        Authorization: "Bearer " + OPENAI_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: \`Client profile:\n\${JSON.stringify(clientProfile, null, 2)}\` }
+          { role: "user", content: `Client profile:
+${JSON.stringify(clientProfile, null, 2)}` }
         ],
         temperature: 0.7,
       }),
@@ -157,7 +159,8 @@ Return valid JSON only. Begin with '{' and end with '}'. No extra commentary.\`;
 
     const data = await openaiRes.json();
     const rawContent = data.choices?.[0]?.message?.content || "";
-    console.log("📤 OpenAI raw content:", rawContent.slice(0, 500));
+    console.log("📤 FULL OpenAI response:
+", rawContent);
 
     let workoutJson;
     try {
@@ -175,10 +178,28 @@ Return valid JSON only. Begin with '{' and end with '}'. No extra commentary.\`;
       return res.status(500).json({ error: "Missing or empty blocks array from OpenAI." });
     }
 
-    // Ready for insert — you can re-enable inserts here safely
     console.log("✅ Parsed program title:", workoutJson.program_title);
+
+    const program_id = crypto.randomUUID();
+    await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
+      method: "POST",
+      headers: headersWithAuth,
+      body: JSON.stringify([{
+        program_id,
+        user_id,
+        intake_id: intake.intake_id,
+        program_title: workoutJson.program_title,
+        goal_summary: intake.primary_goal,
+        program_start_date: startDate.toISOString().split("T")[0],
+        program_duration_weeks: intake.program_duration_weeks,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        version_number: 1
+      }])
+    });
+
     res.json({
-      message: "✅ Workout program parsed successfully!",
+      message: "✅ Workout program parsed and saved to Supabase!",
       title: workoutJson.program_title,
       block_count: workoutJson.blocks.length
     });
