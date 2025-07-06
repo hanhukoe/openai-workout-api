@@ -91,7 +91,20 @@ app.post("/generate-plan", async (req, res) => {
     });
 
     const data = await openaiRes.json();
-    const workoutJson = JSON.parse(data.choices[0].message.content);
+    console.log("🧠 OpenAI Raw Response:", JSON.stringify(data, null, 2));
+
+    let workoutJson;
+    try {
+      workoutJson = JSON.parse(data.choices?.[0]?.message?.content || "");
+    } catch (err) {
+      console.error("❌ Failed to parse OpenAI response:", err.message);
+      return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
+    }
+
+    if (!workoutJson || !Array.isArray(workoutJson.blocks)) {
+      console.error("❌ No blocks array in OpenAI output:", workoutJson);
+      return res.status(500).json({ error: "OpenAI did not return a valid workout program." });
+    }
 
     const program_id = crypto.randomUUID();
     await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
