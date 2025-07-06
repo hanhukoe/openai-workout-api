@@ -50,8 +50,7 @@ app.post("/generate-plan", async (req, res) => {
     ]);
 
     if (!intakeData || intakeData.length === 0) {
-      res.status(404).json({ error: "Intake data not found" });
-      return;
+      return res.status(404).json({ error: "Intake data not found" });
     }
 
     const intake = intakeData[0];
@@ -73,10 +72,35 @@ app.post("/generate-plan", async (req, res) => {
     };
 
     const prompt = `
-You are an expert personal trainer...
-
-[insert your full prompt and required JSON structure here]
-    `;
+You are an expert personal trainer. 
+Based on the client's profile, generate a detailed 12-week workout program structured in JSON format only. 
+DO NOT include explanations, markdown headers, or non-JSON text. 
+Your output must begin with "{" and end with "}". 
+The structure must be: {
+  "program_title": "...",
+  "blocks": [
+    {
+      "title": "...",
+      "weeks": [
+        {
+          "week_number": 1,
+          "days": [
+            {
+              "day": "Monday",
+              "focus_area": "...",
+              "duration_min": 45,
+              "structure_type": "training",
+              "warmup": [ { "name": "...", "sets": 2, "reps": 10 } ],
+              "main_set": [ { "name": "...", "sets": 3, "reps": 12 } ],
+              "cooldown": [ { "name": "..." } ],
+              "quote": "..."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -88,7 +112,8 @@ You are an expert personal trainer...
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: `Client profile:\n${JSON.stringify(clientProfile, null, 2)}` }
+          { role: "user", content: `Client profile:\n${JSON.stringify(clientProfile, null, 2)}` },
+          { role: "user", content: "Reminder: ONLY return valid JSON. No explanations or headers." }
         ],
         temperature: 0.7,
       }),
@@ -97,7 +122,6 @@ You are an expert personal trainer...
     const data = await openaiRes.json();
     console.log("🧠 OpenAI Raw Response:", JSON.stringify(data, null, 2));
 
-    // 🛡️ Robust JSON Parsing + Guardrails
     let workoutJson;
     const rawContent = data.choices?.[0]?.message?.content || "";
 
@@ -105,23 +129,27 @@ You are an expert personal trainer...
       const sanitized = rawContent
         .replace(/^```(?:json)?/gm, "")
         .replace(/```$/gm, "")
-        .replace(/^#+\s.+$/gm, "") // remove headers like ### Title
+        .replace(/^#+\s.+$/gm, "")
         .trim();
 
       const jsonStart = sanitized.indexOf("{");
       const jsonEnd = sanitized.lastIndexOf("}") + 1;
 
-      if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object boundaries found.");
+      if (jsonStart === -1 || jsonEnd <= jsonStart) throw new Error("No JSON object boundaries found.");
 
       const jsonString = sanitized.slice(jsonStart, jsonEnd);
-      const noTrailingCommas = jsonString.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+      const cleanJson = jsonString.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
 
-      workoutJson = JSON.parse(noTrailingCommas);
+      workoutJson = JSON.parse(cleanJson);
     } catch (err) {
       console.error("❌ Failed to parse OpenAI response:");
       console.error("Raw content:", rawContent);
       console.error("Error:", err.message);
-      return res.status(500).json({ error: "Invalid JSON from OpenAI", details: err.message });
+      return res.status(500).json({
+        error: "Invalid JSON from OpenAI",
+        details: err.message,
+        openai_output_preview: rawContent.slice(0, 500) + "..."
+      });
     }
 
     if (!workoutJson || !Array.isArray(workoutJson.blocks)) {
@@ -129,7 +157,6 @@ You are an expert personal trainer...
       return res.status(500).json({ error: "OpenAI did not return a valid workout program." });
     }
 
-    // ✅ Deep sanitize each block/week/day
     for (const block of workoutJson.blocks) {
       if (!Array.isArray(block.weeks)) block.weeks = [];
 
@@ -149,14 +176,14 @@ You are an expert personal trainer...
       }
     }
 
-    // 👇 Now ready for Supabase insertion or next stage
     res.json({
       message: "✅ Workout program generated and parsed!",
-      title: workoutJson.program_title
+      title: workoutJson.program_title,
+      block_count: workoutJson.blocks.length
     });
 
   } catch (err) {
-    console.error("🔥 Error during program generation:", err);
+    console.error("🔥 Unexpected Error:", err);
     res.status(500).json({ error: "Something went wrong", details: err.message });
   }
 });
