@@ -36,7 +36,8 @@ export function buildPrompt(profile) {
     "",
     "-- STRUCTURE RULES --",
     "Break the full program into logical training blocks (e.g., Base, Build, Peak, Taper).",
-    "Choose the block structure based on duration, fitness level, and primary goal.",
+    "Each block must include: title, block type, summary, and week range.",
+    "Choose block structure based on duration, fitness level, and goal.",
     "",
     "-- RESPONSE FORMAT --",
     "Return ONLY JSON in the following structure:",
@@ -45,6 +46,9 @@ export function buildPrompt(profile) {
   "blocks": [
     {
       "title": "string",
+      "block_type": "string",
+      "summary": "string",
+      "week_range": [start_week, end_week],
       "weeks": [
         {
           "week_number": integer,
@@ -75,7 +79,8 @@ export function buildPrompt(profile) {
 }`,
     "",
     "-- DESIGN RULES --",
-    "- Create detailed workouts for the first 3 weeks only.",
+    `- Design the full ${weeks}-week program with clearly defined training blocks.`,
+    "- Provide detailed day-by-day workouts ONLY for the first 3 weeks.",
     "- Include all 7 days in each week (use rest days if needed).",
     "- Avoid assigning workouts on unavailable or blackout days.",
     "- Never schedule more than 2 consecutive rest days.",
