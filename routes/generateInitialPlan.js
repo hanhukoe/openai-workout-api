@@ -1,18 +1,14 @@
-// 📦 generateInitialPlan.js
-// Express route for generating a personalized 12-week plan with 3 weeks of detailed workouts
-
 import express from "express";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import crypto from "crypto";
 
-import { buildPrompt } from "./utils/promptBuilder.js";
-import { validateWorkoutProgram } from "./utils/schemaValidator.js";
-import { insertProgramData } from "./utils/helpers.js";
-import { mockOpenAIResponse } from "./utils/mockResponse.js";
+import { buildPrompt } from "../utils/promptBuilder.js";
+import { validateWorkoutProgram } from "../utils/schemaValidator.js";
+import { insertProgramData, retry, trimQuote } from "../utils/helpers.js";
+import { getMockProgramResponse } from "../utils/mockResponse.js";
 
 dotenv.config();
-
 const router = express.Router();
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -30,12 +26,12 @@ router.post("/generate-initial-plan", async (req, res) => {
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
   try {
-    console.log("📥 Fetching user data for:", user_id);
+    console.log("📥 Fetching user data...");
     const fetchTable = async (table) => {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
         headers: headersWithAuth,
       });
-      return await response.json();
+      return await res.json();
     };
 
     const [intake, gyms, boutiques, equipment, limitations, benchmarks, availability, blackout, styles] =
@@ -71,39 +67,70 @@ router.post("/generate-initial-plan", async (req, res) => {
     const { prompt, promptMeta } = buildPrompt(profile);
 
     console.log("🧠 Sending prompt to OpenAI...");
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4-turbo",
-        temperature: 0.7,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: JSON.stringify(profile, null, 2) },
-        ],
-      }),
-    });
+    const callOpenAI = async () => {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4-turbo",
+          temperature: 0.7,
+          messages: [
+            { role: "system", content: prompt },
+            { role: "user", content: JSON.stringify(profile, null, 2) },
+          ],
+        }),
+      });
 
-    const data = await openaiRes.json();
-    let content = data.choices?.[0]?.message?.content || "";
-    const jsonStart = content.indexOf("{");
-    const jsonEnd = content.lastIndexOf("}") + 1;
-    const jsonString = content.slice(jsonStart, jsonEnd);
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      const jsonStart = content.indexOf("{");
+      const jsonEnd = content.lastIndexOf("}") + 1;
+      return JSON.parse(content.slice(jsonStart, jsonEnd));
+    };
 
     let parsed;
     try {
-      parsed = JSON.parse(jsonString);
+      parsed = await retry(callOpenAI, 2, 1500); // 2 retries, 1.5s delay
     } catch (e) {
-      console.warn("❌ Failed to parse OpenAI response. Retrying with mock data...");
-      parsed = mockOpenAIResponse();
+      console.warn("❌ GPT failed after retries. Using mock data.");
+      parsed = getMockProgramResponse();
     }
 
     const isValid = validateWorkoutProgram(parsed);
     if (!isValid) return res.status(422).json({ error: "Invalid OpenAI response format" });
 
+    // Optional: Trim quotes if too long
+    parsed.blocks?.forEach((block) =>
+      block.weeks?.forEach((week) =>
+        week.days?.forEach((day) => {
+          day.quote = trimQuote(day.quote, 100);
+        })
+      )
+    );
+
+    // 💾 Log prompt + response
+    await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
+      method: "POST",
+      headers: headersWithAuth,
+      body: JSON.stringify([
+        {
+          program_generation_id: crypto.randomUUID(),
+          user_id,
+          program_id: null, // will be updated after insertion
+          source: "OpenAI",
+          version_number: 1,
+          generation_type: "initial",
+          prompt_input: promptMeta,
+          prompt_output: parsed,
+          created_at: new Date().toISOString(),
+        },
+      ]),
+    });
+
+    // 🧠 Save full program
     const program_id = await insertProgramData(parsed, profile);
 
     res.status(200).json({
@@ -113,10 +140,9 @@ router.post("/generate-initial-plan", async (req, res) => {
       weeks_generated: 3,
     });
   } catch (err) {
-    console.error("🔥 Error generating plan:", err);
-    res.status(500).json({ error: err.message });
+    console.error("🔥 Error generating plan:", err.message);
+    res.status(500).json({ error: "Something went wrong", detail: err.message });
   }
 });
 
 export default router;
-
