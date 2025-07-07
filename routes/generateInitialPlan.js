@@ -67,33 +67,34 @@ router.post("/generate-initial-plan", async (req, res) => {
     const { prompt, promptMeta } = buildPrompt(profile);
 
     console.log("🧠 Sending prompt to OpenAI...");
-    const callOpenAI = async () => {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4-turbo",
-          temperature: 0.7,
-          messages: [
-            { role: "system", content: prompt },
-            { role: "user", content: JSON.stringify(profile, null, 2) },
-          ],
-        }),
-      });
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "";
-      const jsonStart = content.indexOf("{");
-      const jsonEnd = content.lastIndexOf("}") + 1;
-      return JSON.parse(content.slice(jsonStart, jsonEnd));
-    };
-
-    let parsed;
+    let parsed, usage = {};
     try {
-      parsed = await retry(callOpenAI, 2, 1500); // 2 retries, 1.5s delay
+      const data = await retry(async () => {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4-turbo",
+            temperature: 0.7,
+            messages: [
+              { role: "system", content: prompt },
+              { role: "user", content: JSON.stringify(profile, null, 2) },
+            ],
+          }),
+        });
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        const jsonStart = content.indexOf("{");
+        const jsonEnd = content.lastIndexOf("}") + 1;
+        usage = data.usage || {}; // 👈 grab token counts
+        return JSON.parse(content.slice(jsonStart, jsonEnd));
+      }, 2, 1500);
+
+      parsed = data;
     } catch (e) {
       console.warn("❌ GPT failed after retries. Using mock data.");
       parsed = getMockProgramResponse();
@@ -102,7 +103,6 @@ router.post("/generate-initial-plan", async (req, res) => {
     const isValid = validateWorkoutProgram(parsed);
     if (!isValid) return res.status(422).json({ error: "Invalid OpenAI response format" });
 
-    // Optional: Trim quotes if too long
     parsed.blocks?.forEach((block) =>
       block.weeks?.forEach((week) =>
         week.days?.forEach((day) => {
@@ -111,26 +111,38 @@ router.post("/generate-initial-plan", async (req, res) => {
       )
     );
 
-    // 💾 Log prompt + response
+    const prompt_tokens = usage.prompt_tokens || 0;
+    const completion_tokens = usage.completion_tokens || 0;
+    const total_tokens = usage.total_tokens || prompt_tokens + completion_tokens;
+    const estimated_cost_usd = Number(
+      ((prompt_tokens / 1000) * 0.01 + (completion_tokens / 1000) * 0.03).toFixed(4)
+    );
+
+    const program_generation_id = crypto.randomUUID();
+
+    // 💾 Log prompt + response + token stats
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
       body: JSON.stringify([
         {
-          program_generation_id: crypto.randomUUID(),
+          program_generation_id,
           user_id,
-          program_id: null, // will be updated after insertion
+          program_id: null,
           source: "OpenAI",
           version_number: 1,
           generation_type: "initial",
           prompt_input: promptMeta,
           prompt_output: parsed,
+          prompt_tokens,
+          completion_tokens,
+          total_tokens,
+          estimated_cost_usd,
           created_at: new Date().toISOString(),
         },
       ]),
     });
 
-    // 🧠 Save full program
     const program_id = await insertProgramData(parsed, profile);
 
     res.status(200).json({
@@ -138,6 +150,8 @@ router.post("/generate-initial-plan", async (req, res) => {
       program_id,
       title: parsed.program_title,
       weeks_generated: 3,
+      tokens_used: total_tokens,
+      estimated_cost_usd,
     });
   } catch (err) {
     console.error("🔥 Error generating plan:", err.message);
