@@ -5,19 +5,22 @@ export function buildPrompt(profile) {
   const weeks = intake.program_duration_weeks;
   const daysPerWeek = availability.days_per_week || 4;
   const sessionLength = availability.session_length_minutes || 45;
-  const unavailable = availability.unavailable_days || [];
+  const unavailable = blackout.recurring_day || [];
   const fitnessLevel = benchmarks.fitness_level || "Intermediate";
-  const trainingPreferences = styles.styles_likes || "";
-  const dislikes = styles.styles_dislikes || "";
+  const trainingPreferences = styles.styles_likes || "Not specified";
+  const dislikes = styles.styles_dislikes || "None";
 
-  const equipmentList = equipment.flatMap((e) => e.equipment_list || []);
+  const equipmentList = equipment.flatMap(e => e.equipment_list || []);
   const equipmentStr = equipmentList.length > 0 ? equipmentList.join(", ") : "bodyweight only";
 
-  const blackoutDays = blackout.recurring_day?.join(", ") || "none";
-  const userLimitations = limitations.limitations_list || "none";
+  const limitationsText = limitations.limitations_list || "none";
 
   const promptLines = [
-    "You are an expert personal trainer and coach.",
+    "You are a highly experienced personal trainer specializing in:",
+    "- Functional strength and conditioning",
+    "- Race prep (e.g., HYROX, Spartan)",
+    "- Recovery, injury-aware training, and adaptive programs",
+    "",
     `Design a ${weeks}-week fitness program for the following client goal: "${goal}".`,
     "",
     "-- CLIENT PROFILE --",
@@ -28,13 +31,15 @@ export function buildPrompt(profile) {
     `- Max Training Days/Week: ${daysPerWeek}`,
     `- Session Length: ~${sessionLength} min ±5`,
     `- Unavailable Days: ${unavailable.join(", ") || "none"}`,
-    `- Blackout Days: ${blackoutDays}`,
-    `- Physical Limitations: ${userLimitations}`,
+    `- Physical Limitations: ${limitationsText}`,
     `- Available Equipment: ${equipmentStr}`,
     "",
-    "-- RESPONSE FORMAT --",
-    "Return ONLY JSON in the following format:",
+    "-- STRUCTURE RULES --",
+    "Break the full program into logical training blocks (e.g., Base, Build, Peak, Taper).",
+    "Choose the block structure based on duration, fitness level, and primary goal.",
     "",
+    "-- RESPONSE FORMAT --",
+    "Return ONLY JSON in the following structure:",
     `{
   "program_title": "string",
   "blocks": [
@@ -51,7 +56,15 @@ export function buildPrompt(profile) {
               "structure_type": "string",
               "quote": "string (max 100 characters)",
               "warmup": [ { "name": "string" }, ... ],
-              "main_set": [ { "name": "string", "sets": int, "reps": int, "rest_after_sec": int }, ... ],
+              "main_set": [
+                { 
+                  "name": "string", 
+                  "sets": int, 
+                  "reps": int, 
+                  "rest_after_sec": int 
+                },
+                ...
+              ],
               "cooldown": [ { "name": "string" }, ... ]
             }
           ]
@@ -61,13 +74,18 @@ export function buildPrompt(profile) {
   ]
 }`,
     "",
-    "-- RULES --",
-    "- Create a complete block structure for the full program duration",
-    "- ONLY provide detailed workouts for the first 3 weeks",
-    "- Include all 7 days in each week (rest days are allowed)",
-    "- Never assign workouts on unavailable or blackout days",
-    "- Match session length, style, and equipment constraints",
-    "- Keep quotes short, max 100 characters",
+    "-- DESIGN RULES --",
+    "- Create detailed workouts for the first 3 weeks only.",
+    "- Include all 7 days in each week (use rest days if needed).",
+    "- Avoid assigning workouts on unavailable or blackout days.",
+    "- Never schedule more than 2 consecutive rest days.",
+    "- Respect preferred training frequency and equipment.",
+    "- Use gym access if available; only assign studio classes if credits exist.",
+    "- If credits are exhausted, substitute with gym-based equivalents.",
+    "- main_set (limit complexity: 2–3 segments, 3–6 exercises per segment max)",
+    "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
+    "- Apply progressive overload (beginners = modest, advanced = aggressive).",
+    "- Keep motivational quotes short (max 100 characters) and coach-like."
   ];
 
   const prompt = promptLines.join("\n");
@@ -78,10 +96,10 @@ export function buildPrompt(profile) {
     fitnessLevel,
     daysPerWeek,
     sessionLength,
-    equipmentCount: equipmentList.length,
     trainingPreferences,
     unavailable,
-    blackoutDays,
+    limitations: limitationsText,
+    equipmentCount: equipmentList.length
   };
 
   return { prompt, promptMeta };
