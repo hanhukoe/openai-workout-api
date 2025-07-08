@@ -67,7 +67,9 @@ router.post("/generate-initial-plan", async (req, res) => {
     const { prompt, promptMeta } = buildPrompt(profile);
 
     console.log("🧠 Sending prompt to OpenAI...");
-    let parsed, usage = {};
+    let parsed;
+    let usage = {};
+
     try {
       const data = await retry(async () => {
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -86,14 +88,16 @@ router.post("/generate-initial-plan", async (req, res) => {
           }),
         });
 
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || "";
+        const raw = await response.json();
+        const content = raw.choices?.[0]?.message?.content || "";
 
         try {
           const jsonStart = content.indexOf("{");
           const jsonEnd = content.lastIndexOf("}") + 1;
-          usage = data.usage || {};
-          return JSON.parse(content.slice(jsonStart, jsonEnd));
+          const jsonRaw = content.slice(jsonStart, jsonEnd);
+          const cleanedJson = jsonRaw.replace(/\/\/.*$/gm, ""); // remove JS-style comments
+          usage = raw.usage || {};
+          return JSON.parse(cleanedJson);
         } catch (err) {
           console.error("❌ JSON.parse failed on OpenAI response:", content);
           throw new Error("OpenAI response was not valid JSON.");
@@ -124,7 +128,7 @@ router.post("/generate-initial-plan", async (req, res) => {
       return res.status(422).json({ error: "Invalid OpenAI response format" });
     }
 
-    // Trim quotes
+    // Trim motivational quotes
     parsed.blocks?.forEach((block) =>
       block.weeks?.forEach((week) =>
         week.days?.forEach((day) => {
@@ -142,7 +146,7 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const program_generation_id = crypto.randomUUID();
 
-    // Save prompt + output for logging
+    // Save prompt + output to Supabase log
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
