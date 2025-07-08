@@ -100,6 +100,17 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
+    // 🛡️ Patch: ensure all days have warmup, main_set, cooldown fields (even if empty)
+    parsed.blocks?.forEach((block, blockIndex) =>
+      block.weeks?.forEach((week, weekIndex) =>
+        week.days?.forEach((day, dayIndex) => {
+          day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+          day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+          day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+        })
+      )
+    );
+    
     const isValid = validateWorkoutProgram(parsed);
     if (!isValid) return res.status(422).json({ error: "Invalid OpenAI response format" });
 
