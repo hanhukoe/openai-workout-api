@@ -105,14 +105,22 @@ router.post("/generate-initial-plan", async (req, res) => {
         }
 
         let jsonRaw = match[1];
-
+        
         jsonRaw = jsonRaw
-          .replace(/\/\/.*$/gm, "")
-          .replace(/,\s*}/g, "}")
-          .replace(/,\s*]/g, "]");
-
+          .replace(/\/\/.*$/gm, "")       // remove JS-style comments
+          .replace(/,\s*}/g, "}")         // trailing commas in objects
+          .replace(/,\s*]/g, "]")         // trailing commas in arrays
+          .trim();
+        
+        // ✅ Attempt to close the final JSON brace if it looks truncated
+        if (!jsonRaw.endsWith("}")) {
+          console.warn("⚠️ JSON response may be truncated. Appending closing brace.");
+          jsonRaw += "}";
+        }
+        
         console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
         const parsedData = JSON.parse(jsonRaw);
+
 
         if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
           throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
