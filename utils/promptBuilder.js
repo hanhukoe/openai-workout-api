@@ -91,6 +91,7 @@ export function buildPrompt(profile) {
     "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
     "- Apply progressive overload (beginners = modest, advanced = aggressive).",
     "- Keep motivational quotes short (max 100 characters) and coach-like."
+    "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable)."
   ];
 
   const prompt = promptLines.join("\n");
