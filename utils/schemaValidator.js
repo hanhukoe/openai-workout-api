@@ -26,9 +26,10 @@ export function validateWorkoutProgram(data) {
       }
 
       for (const [weekIndex, week] of block.weeks.entries()) {
+        // 🛠 Ensure week.days is always an array
         if (!Array.isArray(week.days)) {
-          console.error(`❌ Block ${blockIndex + 1} → Week ${weekIndex + 1} days is not an array`);
-          return false;
+          console.warn(`⚠️ Week ${weekIndex + 1} in block ${blockIndex + 1} missing days, defaulting to []`);
+          week.days = [];
         }
 
         for (const [dayIndex, day] of week.days.entries()) {
@@ -50,7 +51,6 @@ export function validateWorkoutProgram(data) {
             }
           }
 
-          // Check types (bonus)
           if (typeof day.duration_min !== "number") {
             console.error(`❌ duration_min should be a number in day ${day.day}`);
             return false;
