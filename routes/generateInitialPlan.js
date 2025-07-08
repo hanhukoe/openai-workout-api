@@ -92,17 +92,22 @@ router.post("/generate-initial-plan", async (req, res) => {
         const content = raw.choices?.[0]?.message?.content || "";
 
         try {
-          const jsonStart = content.indexOf("{");
-          const jsonEnd = content.lastIndexOf("}") + 1;
-          let jsonRaw = content.slice(jsonStart, jsonEnd);
-        
-          // Strip comments (//) and trailing commas
+          const match = content.match(/```json\s*([\s\S]+?)\s*```/) || content.match(/({[\s\S]+})/);
+          if (!match) {
+            console.error("⚠️ Could not match a JSON block in content:", content.slice(0, 300));
+            throw new Error("No valid JSON block found in OpenAI response");
+          }
+          
+          let jsonRaw = match[1];
+          
+          // Remove trailing commas and comments
           jsonRaw = jsonRaw
-            .replace(/\/\/.*$/gm, "")             // remove JS-style comments
-            .replace(/,\s*}/g, "}")               // trailing comma before object end
-            .replace(/,\s*]/g, "]");              // trailing comma before array end
-        
-          usage = raw.usage || {};
+            .replace(/\/\/.*$/gm, "") // JS-style comments
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]");
+
+          console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
+          
           return JSON.parse(jsonRaw);
         } catch (err) {
           console.error("❌ JSON.parse failed:", err);
