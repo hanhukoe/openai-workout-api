@@ -40,7 +40,7 @@ export function buildPrompt(profile) {
     "Choose block structure based on duration, fitness level, and goal.",
     "",
     "-- RESPONSE FORMAT --",
-    "Return ONLY JSON in the following structure:",
+    "Return ONLY strict JSON — do NOT include any comments, notes, or explanations.",
     `{
   "program_title": "string",
   "blocks": [
