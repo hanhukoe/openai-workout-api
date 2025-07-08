@@ -12,7 +12,6 @@ export function buildPrompt(profile) {
 
   const equipmentList = equipment.flatMap(e => e.equipment_list || []);
   const equipmentStr = equipmentList.length > 0 ? equipmentList.join(", ") : "bodyweight only";
-
   const limitationsText = limitations.limitations_list || "none";
 
   const promptLines = [
@@ -35,16 +34,16 @@ export function buildPrompt(profile) {
     `- Available Equipment: ${equipmentStr}`,
     "",
     "-- STRUCTURE RULES --",
-    "Break the program into training blocks (e.g., Base, Build, Peak, Taper).",
+    "Break the program into 3–4 logical training blocks (e.g., Base, Build, Peak, Taper).",
     "Each block must include: title, block_type, summary, and week_range.",
-    "Every block MUST include a `weeks` array with one object for EACH week in the range.",
-    "Weeks 1–3 should have detailed day-level workouts.",
+    "Each block MUST include a `weeks` array with exactly one entry for every week in the block.",
+    "Each `week` must include the correct `week_number`, even if `days` is empty.",
+    "Only weeks 1 through 3 should include full day-by-day workouts.",
     "Weeks 4 and later should still include `week_number` and `days: []`.",
     "",
     "-- RESPONSE FORMAT --",
-    "Return ONLY strict JSON — do NOT include any comments, notes, or explanations.",
-    "DO NOT wrap JSON in triple backticks.",
-    "Ensure your response ends with a closing brace `}`.",
+    "Return ONLY strict JSON — do NOT include any comments, notes, or triple backticks.",
+    "Ensure your response is valid JSON and ends with a closing brace `}`.",
     `{
   "program_title": "string",
   "blocks": [
@@ -83,19 +82,18 @@ export function buildPrompt(profile) {
 }`,
     "",
     "-- DESIGN RULES --",
-    `- Create a ${weeks}-week plan using clearly defined blocks.`,
-    "- Provide detailed workouts only for weeks 1–3.",
-    "- For later weeks, include `week_number` and empty `days: []`.",
-    "- Include all 7 days in each week — use rest days if needed.",
-    "- Never skip or omit a week in the `weeks` array.",
-    "- Never leave a block without a complete `weeks` array.",
-    "- Never schedule workouts on unavailable or blackout days.",
-    "- Never assign more than 2 consecutive rest days.",
+    `- Build a full ${weeks}-week program using well-structured training blocks.`,
+    "- Do NOT skip or omit any weeks — include every week explicitly.",
+    "- Only fill out detailed `days` for weeks 1, 2, and 3.",
+    "- Use `days: []` for weeks 4 and onward — but include the `week_number`.",
+    "- Include all 7 days per week (use rest days where needed).",
+    "- Never schedule workouts on blackout/unavailable days.",
+    "- Avoid more than 2 consecutive rest days.",
     "- Use gym/studio access only if available or credits exist.",
-    "- Respect all physical limitations — never assign harmful exercises.",
-    "- Style dislikes may be overridden if needed for the goal — but minimize them.",
-    "- Keep warmup/main_set/cooldown arrays even on light days (use empty arrays if needed).",
-    "- Keep motivational quotes short and coach-like (max 100 chars).",
+    "- Always respect physical limitations — never assign unsafe exercises.",
+    "- Dislikes can be overridden if needed — but justify and minimize them.",
+    "- Every workout must include warmup, main_set, and cooldown arrays (can be empty).",
+    "- Quotes must be brief, motivating, and max 100 characters.",
     "- Apply progressive overload: modest for beginners, aggressive for advanced."
   ];
 
