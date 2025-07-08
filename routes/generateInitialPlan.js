@@ -9,7 +9,7 @@ import {
   insertProgramData,
   retry,
   trimQuote,
-  cleanProgramStructure, // ⬅️ Added this line
+  cleanProgramStructure,
 } from "../utils/helpers.js";
 import { getMockProgramResponse } from "../utils/mockResponse.js";
 
@@ -19,6 +19,7 @@ const router = express.Router();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const DEBUG_GPT = process.env.DEBUG_GPT === "true";
 
 const headersWithAuth = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -73,72 +74,67 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     console.log("🧠 Sending prompt to OpenAI...");
     let parsed;
-let usage = {};
-
-try {
-  const data = await retry(async () => {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4-turbo",
-        temperature: 0.7,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: JSON.stringify(profile, null, 2) },
-        ],
-      }),
-    });
-
-    const raw = await response.json();
-    const content = raw.choices?.[0]?.message?.content || "";
-
-    return res.status(200).json({
-      message: "🧠 Raw OpenAI response for debugging",
-      raw_content: content,
-      usage,
-    });
-
-    usage = raw.usage || {};
+    let usage = {};
+    let rawContent = "";
 
     try {
-      const match = content.match(/```json\s*([\s\S]+?)\s*```/) || content.match(/({[\s\S]+})/);
-      if (!match) {
-        console.error("⚠️ Could not match a JSON block in content:", content.slice(0, 300));
-        throw new Error("No valid JSON block found in OpenAI response");
-      }
+      const data = await retry(async () => {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4-turbo",
+            temperature: 0.7,
+            messages: [
+              { role: "system", content: prompt },
+              { role: "user", content: JSON.stringify(profile, null, 2) },
+            ],
+          }),
+        });
 
-      let jsonRaw = match[1];
+        const raw = await response.json();
+        rawContent = raw.choices?.[0]?.message?.content || "";
+        usage = raw.usage || {};
 
-      jsonRaw = jsonRaw
-        .replace(/\/\/.*$/gm, "")
-        .replace(/,\s*}/g, "}")
-        .replace(/,\s*]/g, "]");
+        const match = rawContent.match(/```json\s*([\s\S]+?)\s*```/) || rawContent.match(/({[\s\S]+})/);
+        if (!match) {
+          throw new Error("No valid JSON block found in OpenAI response");
+        }
 
-      console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
-      const parsedData = JSON.parse(jsonRaw);
+        let jsonRaw = match[1];
 
-      if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
-        throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
-      }
+        jsonRaw = jsonRaw
+          .replace(/\/\/.*$/gm, "")
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]");
 
-      return parsedData;
-    } catch (err) {
-      console.error("❌ JSON.parse failed:", err);
-      console.log("🪵 Raw OpenAI content was:\n", content.slice(0, 500), "...");
-      throw new Error("OpenAI response was not valid JSON.");
+        console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
+        const parsedData = JSON.parse(jsonRaw);
+
+        if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
+          throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
+        }
+
+        return parsedData;
+      }, 2, 1500);
+
+      parsed = data;
+    } catch (e) {
+      console.warn("❌ GPT failed after retries. Using mock data instead.");
+      parsed = getMockProgramResponse();
     }
-  }, 2, 1500);
 
-  parsed = data;
-} catch (e) {
-  console.warn("❌ GPT failed after retries. Using mock data instead.");
-  parsed = getMockProgramResponse();
-}
-
+    // 🧪 Debug Mode
+    if (DEBUG_GPT) {
+      return res.status(200).json({
+        message: "🧠 Raw OpenAI response for debugging",
+        raw_content: rawContent,
+        usage,
+      });
+    }
 
     // 🧼 Clean up the parsed data
     parsed = cleanProgramStructure(parsed);
