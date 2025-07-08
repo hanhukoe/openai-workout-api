@@ -26,11 +26,18 @@ export function validateWorkoutProgram(data) {
       }
 
       for (const [weekIndex, week] of block.weeks.entries()) {
-        // 🛠 Ensure week.days is always an array
-        if (!Array.isArray(week.days)) {
-          console.warn(`⚠️ Week ${weekIndex + 1} in block ${blockIndex + 1} missing days, defaulting to []`);
-          week.days = [];
+        if (!("week_number" in week)) {
+          console.error(`❌ Week ${weekIndex + 1} in block ${blockIndex + 1} is missing week_number`);
+          return false;
         }
+
+        if (!Array.isArray(week.days)) {
+          console.error(`❌ Block ${blockIndex + 1} → Week ${weekIndex + 1} days is not an array`);
+          return false;
+        }
+
+        // If there are no days in this week, skip day-level validation (valid for weeks 4+)
+        if (week.days.length === 0) continue;
 
         for (const [dayIndex, day] of week.days.entries()) {
           const requiredFields = [
@@ -56,7 +63,11 @@ export function validateWorkoutProgram(data) {
             return false;
           }
 
-          if (!Array.isArray(day.warmup) || !Array.isArray(day.main_set) || !Array.isArray(day.cooldown)) {
+          if (
+            !Array.isArray(day.warmup) ||
+            !Array.isArray(day.main_set) ||
+            !Array.isArray(day.cooldown)
+          ) {
             console.error(`❌ One of warmup/main_set/cooldown is not an array in day ${day.day}`);
             return false;
           }
