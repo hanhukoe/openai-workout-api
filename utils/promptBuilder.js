@@ -80,7 +80,7 @@ export function buildPrompt(profile) {
     "",
     "-- DESIGN RULES --",
     `- Design the full ${weeks}-week program with clearly defined training blocks.`,
-    "- Provide detailed day-by-day workouts for weeks 1 through 3.",
+    "- Provide detailed day-by-day workouts for weeks 1 through 3 only; later weeks can omit daily detail but must include week objects and block structure.",
     "- Still include all training blocks covering the full 12-week structure (with week numbers).",
     "- Include all 7 days in each week (use rest days if needed).",
     "- Avoid assigning workouts on unavailable or blackout days.",
