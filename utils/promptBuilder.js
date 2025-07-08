@@ -80,7 +80,8 @@ export function buildPrompt(profile) {
     "",
     "-- DESIGN RULES --",
     `- Design the full ${weeks}-week program with clearly defined training blocks.`,
-    "- Provide detailed day-by-day workouts ONLY for the first 3 weeks.",
+    "- Provide detailed day-by-day workouts for weeks 1 through 3.",
+    "- Still include all training blocks covering the full 12-week structure (with week numbers).",
     "- Include all 7 days in each week (use rest days if needed).",
     "- Avoid assigning workouts on unavailable or blackout days.",
     "- Never schedule more than 2 consecutive rest days.",
@@ -91,6 +92,7 @@ export function buildPrompt(profile) {
     "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
     "- Apply progressive overload (beginners = modest, advanced = aggressive).",
     "- Keep motivational quotes short (max 100 characters) and coach-like.",
+    "- Each block must include all assigned weeks, even if only some weeks include detailed day schedules.",
     "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable)."
   ];
 
