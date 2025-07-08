@@ -37,6 +37,7 @@ export function buildPrompt(profile) {
     "-- STRUCTURE RULES --",
     "Break the full program into logical training blocks (e.g., Base, Build, Peak, Taper).",
     "Each block must include: title, block type, summary, and week range.",
+    "Each block must also include an array of week objects for all covered weeks — even if `days` is an empty array.",
     "Choose block structure based on duration, fitness level, and goal.",
     "",
     "-- RESPONSE FORMAT --",
@@ -80,9 +81,10 @@ export function buildPrompt(profile) {
     "",
     "-- DESIGN RULES --",
     `- Design the full ${weeks}-week program with clearly defined training blocks.`,
-    "- Provide detailed day-by-day workouts for weeks 1 through 3 only; later weeks can omit daily detail but must include week objects and block structure.",
-    "- Still include all training blocks covering the full 12-week structure (with week numbers).",
-    "- Include all 7 days in each week (use rest days if needed).",
+    "- Provide detailed day-by-day workouts for weeks 1 through 3 only.",
+    "- For all later weeks, include the correct `week_number` and an empty `days: []` array.",
+    "- Include all 7 days in each week — rest days are fine.",
+    "- Each block must include ALL assigned weeks in its range.",
     "- Client safety always comes first. Respect all physical limitations strictly — never assign exercises that could cause harm.",
     "- Preferences (e.g., dislike of certain styles or exercises) should be considered — but may be overridden if they conflict with achieving the goal.",
     "- If a preference conflicts with the goal, include the needed element anyway, but minimize it and clearly justify its inclusion.",
@@ -95,8 +97,7 @@ export function buildPrompt(profile) {
     "- Keep motivational quotes short (max 100 characters) and coach-like.",
     "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable).",
     "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
-    "- Apply progressive overload (beginners = modest, advanced = aggressive).",
-    "- Each block must include all assigned weeks, even if only some weeks include detailed day schedules."
+    "- Apply progressive overload (beginners = modest, advanced = aggressive)."
   ];
 
   const prompt = promptLines.join("\n");
