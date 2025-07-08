@@ -35,13 +35,16 @@ export function buildPrompt(profile) {
     `- Available Equipment: ${equipmentStr}`,
     "",
     "-- STRUCTURE RULES --",
-    "Break the full program into logical training blocks (e.g., Base, Build, Peak, Taper).",
-    "Each block must include: title, block type, summary, and week range.",
-    "Each block must also include an array of week objects for all covered weeks — even if `days` is an empty array.",
-    "Choose block structure based on duration, fitness level, and goal.",
+    "Break the program into training blocks (e.g., Base, Build, Peak, Taper).",
+    "Each block must include: title, block_type, summary, and week_range.",
+    "Every block MUST include a `weeks` array with one object for EACH week in the range.",
+    "Weeks 1–3 should have detailed day-level workouts.",
+    "Weeks 4 and later should still include `week_number` and `days: []`.",
     "",
     "-- RESPONSE FORMAT --",
     "Return ONLY strict JSON — do NOT include any comments, notes, or explanations.",
+    "DO NOT wrap JSON in triple backticks.",
+    "Ensure your response ends with a closing brace `}`.",
     `{
   "program_title": "string",
   "blocks": [
@@ -80,24 +83,20 @@ export function buildPrompt(profile) {
 }`,
     "",
     "-- DESIGN RULES --",
-    `- Design the full ${weeks}-week program with clearly defined training blocks.`,
-    "- Provide detailed day-by-day workouts for weeks 1 through 3 only.",
-    "- For all later weeks, include the correct `week_number` and an empty `days: []` array.",
-    "- Include all 7 days in each week — rest days are fine.",
-    "- Each block must include ALL assigned weeks in its range.",
-    "- Client safety always comes first. Respect all physical limitations strictly — never assign exercises that could cause harm.",
-    "- Preferences (e.g., dislike of certain styles or exercises) should be considered — but may be overridden if they conflict with achieving the goal.",
-    "- If a preference conflicts with the goal, include the needed element anyway, but minimize it and clearly justify its inclusion.",
-    "- Use progressive overload and phased training to ease clients into required modalities they dislike but need.",
-    "- Avoid assigning workouts on unavailable or blackout days.",
-    "- Never schedule more than 2 consecutive rest days.",
-    "- Use gym access if available; assign studio classes only if credits exist.",
-    "- If studio credits are exhausted, substitute with gym-based equivalents.",
-    "- Limit main_set complexity (2–3 segments, 3–6 exercises per segment max).",
-    "- Keep motivational quotes short (max 100 characters) and coach-like.",
-    "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable).",
-    "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
-    "- Apply progressive overload (beginners = modest, advanced = aggressive)."
+    `- Create a ${weeks}-week plan using clearly defined blocks.`,
+    "- Provide detailed workouts only for weeks 1–3.",
+    "- For later weeks, include `week_number` and empty `days: []`.",
+    "- Include all 7 days in each week — use rest days if needed.",
+    "- Never skip or omit a week in the `weeks` array.",
+    "- Never leave a block without a complete `weeks` array.",
+    "- Never schedule workouts on unavailable or blackout days.",
+    "- Never assign more than 2 consecutive rest days.",
+    "- Use gym/studio access only if available or credits exist.",
+    "- Respect all physical limitations — never assign harmful exercises.",
+    "- Style dislikes may be overridden if needed for the goal — but minimize them.",
+    "- Keep warmup/main_set/cooldown arrays even on light days (use empty arrays if needed).",
+    "- Keep motivational quotes short and coach-like (max 100 chars).",
+    "- Apply progressive overload: modest for beginners, aggressive for advanced."
   ];
 
   const prompt = promptLines.join("\n");
@@ -111,7 +110,7 @@ export function buildPrompt(profile) {
     trainingPreferences,
     unavailable,
     limitations: limitationsText,
-    equipmentCount: equipmentList.length
+    equipmentCount: equipmentList.length,
   };
 
   return { prompt, promptMeta };
