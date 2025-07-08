@@ -73,57 +73,65 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     console.log("🧠 Sending prompt to OpenAI...");
     let parsed;
-    let usage = {};
+let usage = {};
+
+try {
+  const data = await retry(async () => {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4-turbo",
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: JSON.stringify(profile, null, 2) },
+        ],
+      }),
+    });
+
+    const raw = await response.json();
+    const content = raw.choices?.[0]?.message?.content || "";
+    usage = raw.usage || {};
 
     try {
-      const data = await retry(async () => {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "gpt-4-turbo",
-            temperature: 0.7,
-            messages: [
-              { role: "system", content: prompt },
-              { role: "user", content: JSON.stringify(profile, null, 2) },
-            ],
-          }),
-        });
+      const match = content.match(/```json\s*([\s\S]+?)\s*```/) || content.match(/({[\s\S]+})/);
+      if (!match) {
+        console.error("⚠️ Could not match a JSON block in content:", content.slice(0, 300));
+        throw new Error("No valid JSON block found in OpenAI response");
+      }
 
-        const raw = await response.json();
-        const content = raw.choices?.[0]?.message?.content || "";
+      let jsonRaw = match[1];
 
-        try {
-          const match = content.match(/```json\s*([\s\S]+?)\s*```/) || content.match(/({[\s\S]+})/);
-          if (!match) {
-            console.error("⚠️ Could not match a JSON block in content:", content.slice(0, 300));
-            throw new Error("No valid JSON block found in OpenAI response");
-          }
+      jsonRaw = jsonRaw
+        .replace(/\/\/.*$/gm, "")
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]");
 
-          let jsonRaw = match[1];
+      console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
+      const parsedData = JSON.parse(jsonRaw);
 
-          jsonRaw = jsonRaw
-            .replace(/\/\/.*$/gm, "")
-            .replace(/,\s*}/g, "}")
-            .replace(/,\s*]/g, "]");
+      if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
+        throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
+      }
 
-          console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
-          return JSON.parse(jsonRaw);
-        } catch (err) {
-          console.error("❌ JSON.parse failed:", err);
-          console.log("🪵 Raw OpenAI content was:\n", content.slice(0, 500), "...");
-          throw new Error("OpenAI response was not valid JSON.");
-        }
-      }, 2, 1500);
-
-      parsed = data;
-    } catch (e) {
-      console.warn("❌ GPT failed after retries. Using mock data.");
-      parsed = getMockProgramResponse();
+      return parsedData;
+    } catch (err) {
+      console.error("❌ JSON.parse failed:", err);
+      console.log("🪵 Raw OpenAI content was:\n", content.slice(0, 500), "...");
+      throw new Error("OpenAI response was not valid JSON.");
     }
+  }, 2, 1500);
+
+  parsed = data;
+} catch (e) {
+  console.warn("❌ GPT failed after retries. Using mock data instead.");
+  parsed = getMockProgramResponse();
+}
+
 
     // 🧼 Clean up the parsed data
     parsed = cleanProgramStructure(parsed);
