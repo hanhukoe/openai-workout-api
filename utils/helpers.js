@@ -77,7 +77,6 @@ export const insertProgramData = async (parsed, profile) => {
   const startDate = formatDate(profile.start_date);
   const duration = profile.intake.program_duration_weeks;
 
-  // 👉 Helper to validate fetch responses
   const safeInsert = async (tableName, payload) => {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}`, {
       method: "POST",
@@ -95,7 +94,6 @@ export const insertProgramData = async (parsed, profile) => {
     return data;
   };
 
-  // Insert the main program
   await safeInsert("programs", [
     {
       program_id,
@@ -111,7 +109,6 @@ export const insertProgramData = async (parsed, profile) => {
     },
   ]);
 
-  // Loop through blocks
   for (const block of parsed.blocks || []) {
     const block_id = generateId();
 
@@ -207,4 +204,47 @@ export const insertProgramData = async (parsed, profile) => {
 
   console.log("🎉 All program data inserted successfully.");
   return program_id;
+};
+
+// 🧼 Clean and normalize AI response before validation
+export const cleanProgramStructure = (parsed) => {
+  if (!parsed || !Array.isArray(parsed.blocks)) return parsed;
+
+  parsed.blocks.forEach((block) => {
+    if (!Array.isArray(block.weeks)) {
+      block.weeks = [];
+      return;
+    }
+
+    block.weeks.forEach((week) => {
+      if (!Array.isArray(week.days)) {
+        week.days = [];
+        return;
+      }
+
+      const seenDays = new Set();
+
+      week.days = week.days.filter((day) => {
+        if (seenDays.has(day.day)) {
+          console.warn(`⚠️ Duplicate day "${day.day}" found — skipping.`);
+          return false;
+        }
+        seenDays.add(day.day);
+
+        day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+        day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+        day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+
+        day.day = day.day ?? "Unknown";
+        day.focus_area = day.focus_area ?? "General";
+        day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 0;
+        day.structure_type = day.structure_type ?? "Unstructured";
+        day.quote = typeof day.quote === "string" ? day.quote : "";
+
+        return true;
+      });
+    });
+  });
+
+  return parsed;
 };
