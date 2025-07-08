@@ -88,10 +88,16 @@ router.post("/generate-initial-plan", async (req, res) => {
 
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || "";
-        const jsonStart = content.indexOf("{");
-        const jsonEnd = content.lastIndexOf("}") + 1;
-        usage = data.usage || {}; // 👈 grab token counts
-        return JSON.parse(content.slice(jsonStart, jsonEnd));
+
+        try {
+          const jsonStart = content.indexOf("{");
+          const jsonEnd = content.lastIndexOf("}") + 1;
+          usage = data.usage || {};
+          return JSON.parse(content.slice(jsonStart, jsonEnd));
+        } catch (err) {
+          console.error("❌ JSON.parse failed on OpenAI response:", content);
+          throw new Error("OpenAI response was not valid JSON.");
+        }
       }, 2, 1500);
 
       parsed = data;
@@ -100,20 +106,25 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
-    // 🛡️ Patch: ensure all days have warmup, main_set, cooldown fields (even if empty)
-    parsed.blocks?.forEach((block, blockIndex) =>
-      block.weeks?.forEach((week, weekIndex) =>
-        week.days?.forEach((day, dayIndex) => {
+    // Ensure structure is valid even for light days
+    parsed.blocks?.forEach((block) =>
+      block.weeks?.forEach((week) =>
+        week.days?.forEach((day) => {
           day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
           day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
           day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
         })
       )
     );
-    
-    const isValid = validateWorkoutProgram(parsed);
-    if (!isValid) return res.status(422).json({ error: "Invalid OpenAI response format" });
 
+    const isValid = validateWorkoutProgram(parsed);
+    if (!isValid) {
+      console.error("❌ Validation failed. Parsed response:");
+      console.dir(parsed, { depth: null });
+      return res.status(422).json({ error: "Invalid OpenAI response format" });
+    }
+
+    // Trim quotes
     parsed.blocks?.forEach((block) =>
       block.weeks?.forEach((week) =>
         week.days?.forEach((day) => {
@@ -131,7 +142,7 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const program_generation_id = crypto.randomUUID();
 
-    // 💾 Log prompt + response + token stats
+    // Save prompt + output for logging
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
@@ -153,7 +164,6 @@ router.post("/generate-initial-plan", async (req, res) => {
         },
       ]),
     });
-
 
     const totalWeeks = parsed.blocks.reduce((sum, b) => sum + (b.weeks?.length || 0), 0);
     if (totalWeeks < 3) {
