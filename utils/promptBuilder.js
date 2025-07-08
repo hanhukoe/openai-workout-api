@@ -83,17 +83,20 @@ export function buildPrompt(profile) {
     "- Provide detailed day-by-day workouts for weeks 1 through 3 only; later weeks can omit daily detail but must include week objects and block structure.",
     "- Still include all training blocks covering the full 12-week structure (with week numbers).",
     "- Include all 7 days in each week (use rest days if needed).",
+    "- Client safety always comes first. Respect all physical limitations strictly — never assign exercises that could cause harm.",
+    "- Preferences (e.g., dislike of certain styles or exercises) should be considered — but may be overridden if they conflict with achieving the goal.",
+    "- If a preference conflicts with the goal, include the needed element anyway, but minimize it and clearly justify its inclusion.",
+    "- Use progressive overload and phased training to ease clients into required modalities they dislike but need.",
     "- Avoid assigning workouts on unavailable or blackout days.",
     "- Never schedule more than 2 consecutive rest days.",
-    "- Respect preferred training frequency and equipment.",
-    "- Use gym access if available; only assign studio classes if credits exist.",
-    "- If credits are exhausted, substitute with gym-based equivalents.",
-    "- main_set (limit complexity: 2–3 segments, 3–6 exercises per segment max)",
+    "- Use gym access if available; assign studio classes only if credits exist.",
+    "- If studio credits are exhausted, substitute with gym-based equivalents.",
+    "- Limit main_set complexity (2–3 segments, 3–6 exercises per segment max).",
+    "- Keep motivational quotes short (max 100 characters) and coach-like.",
+    "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable).",
     "- Do not include warmup/cooldown for studio classes or light recovery sessions.",
     "- Apply progressive overload (beginners = modest, advanced = aggressive).",
-    "- Keep motivational quotes short (max 100 characters) and coach-like.",
-    "- Each block must include all assigned weeks, even if only some weeks include detailed day schedules.",
-    "- Even for light or recovery days, include warmup, main_set, and cooldown arrays (use empty arrays if not applicable)."
+    "- Each block must include all assigned weeks, even if only some weeks include detailed day schedules."
   ];
 
   const prompt = promptLines.join("\n");
