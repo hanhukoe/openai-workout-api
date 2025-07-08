@@ -154,6 +154,12 @@ router.post("/generate-initial-plan", async (req, res) => {
       ]),
     });
 
+
+    const totalWeeks = parsed.blocks.reduce((sum, b) => sum + (b.weeks?.length || 0), 0);
+    if (totalWeeks < 3) {
+      console.warn("⚠️ GPT returned fewer than 3 weeks. Consider retrying or refining the prompt.");
+    }
+
     const program_id = await insertProgramData(parsed, profile);
 
     res.status(200).json({
