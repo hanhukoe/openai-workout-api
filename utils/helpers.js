@@ -14,25 +14,18 @@ const headersWithAuth = {
 export const generateId = () => crypto.randomUUID();
 
 // Format date to YYYY-MM-DD (UTC-safe)
-export const formatDate = (date) => {
-  return new Date(date).toISOString().split("T")[0];
-};
+export const formatDate = (date) => new Date(date).toISOString().split("T")[0];
 
-// Add days to a date
+// Add days/weeks
 export const addDays = (date, numDays) => {
   const result = new Date(date);
   result.setDate(result.getDate() + numDays);
   return result;
 };
 
-// Add weeks to a date
-export const addWeeks = (date, numWeeks) => {
-  const result = new Date(date);
-  result.setDate(result.getDate() + numWeeks * 7);
-  return result;
-};
+export const addWeeks = (date, numWeeks) => addDays(date, numWeeks * 7);
 
-// Calculate block start and end dates
+// Calculate block date ranges
 export const calculateBlockDates = (startDate, weekCounts) => {
   const blocks = [];
   let current = new Date(startDate);
@@ -50,7 +43,7 @@ export const calculateBlockDates = (startDate, weekCounts) => {
   return blocks;
 };
 
-// Retry wrapper for GPT calls or other async ops
+// Retry wrapper for OpenAI / async ops
 export const retry = async (fn, maxRetries = 2, delayMs = 1000) => {
   let lastErr;
   for (let i = 0; i <= maxRetries; i++) {
@@ -64,13 +57,63 @@ export const retry = async (fn, maxRetries = 2, delayMs = 1000) => {
   throw lastErr;
 };
 
-// Enforce quote character limit
+// Enforce quote length
 export const trimQuote = (quote, maxLength = 100) => {
   if (!quote) return "";
   return quote.length > maxLength ? quote.slice(0, maxLength - 1) + "…" : quote;
 };
 
-// 🔁 Insert program + blocks + schedule + workouts into Supabase
+// 🧼 Normalize parsed program data
+export const cleanProgramStructure = (parsed) => {
+  if (!parsed || !Array.isArray(parsed.blocks)) return parsed;
+
+  const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  parsed.blocks.forEach((block) => {
+    if (!Array.isArray(block.weeks)) {
+      block.weeks = [];
+      return;
+    }
+
+    block.weeks.forEach((week) => {
+      if (!Array.isArray(week.days)) {
+        week.days = [];
+        return;
+      }
+
+      const seenDays = new Set();
+
+      week.days = week.days.filter((day) => {
+        if (seenDays.has(day.day)) {
+          console.warn(`⚠️ Duplicate day "${day.day}" found — skipping.`);
+          return false;
+        }
+        seenDays.add(day.day);
+
+        day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+        day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+        day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+
+        day.day = day.day ?? "Unknown";
+        day.focus_area = day.focus_area ?? "General";
+        day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 0;
+        day.structure_type = day.structure_type ?? "Unstructured";
+        day.quote = typeof day.quote === "string" ? day.quote : "";
+
+        return true;
+      });
+
+      // 🧽 Optional: sort weekdays in logical order
+      week.days.sort((a, b) => {
+        return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+      });
+    });
+  });
+
+  return parsed;
+};
+
+// 🔁 Insert program data into Supabase
 export const insertProgramData = async (parsed, profile) => {
   const program_id = generateId();
   const user_id = profile.user_id;
@@ -149,11 +192,11 @@ export const insertProgramData = async (parsed, profile) => {
             workout_id,
             user_id,
             block_order: 1,
-            block_title: `${day.day} - ${day.focus_area}`,
-            block_type: day.structure_type,
+            block_title: `${day.day || "Unknown Day"} - ${day.focus_area || "General"}`,
+            block_type: day.structure_type || "Unstructured",
             rounds: null,
-            duration_seconds: day.duration_min * 60,
-            notes: day.quote,
+            duration_seconds: (day.duration_min || 0) * 60,
+            notes: day.quote || "",
             created_at: new Date().toISOString(),
           },
         ]);
@@ -204,47 +247,4 @@ export const insertProgramData = async (parsed, profile) => {
 
   console.log("🎉 All program data inserted successfully.");
   return program_id;
-};
-
-// 🧼 Clean and normalize AI response before validation
-export const cleanProgramStructure = (parsed) => {
-  if (!parsed || !Array.isArray(parsed.blocks)) return parsed;
-
-  parsed.blocks.forEach((block) => {
-    if (!Array.isArray(block.weeks)) {
-      block.weeks = [];
-      return;
-    }
-
-    block.weeks.forEach((week) => {
-      if (!Array.isArray(week.days)) {
-        week.days = [];
-        return;
-      }
-
-      const seenDays = new Set();
-
-      week.days = week.days.filter((day) => {
-        if (seenDays.has(day.day)) {
-          console.warn(`⚠️ Duplicate day "${day.day}" found — skipping.`);
-          return false;
-        }
-        seenDays.add(day.day);
-
-        day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
-        day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
-        day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
-
-        day.day = day.day ?? "Unknown";
-        day.focus_area = day.focus_area ?? "General";
-        day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 0;
-        day.structure_type = day.structure_type ?? "Unstructured";
-        day.quote = typeof day.quote === "string" ? day.quote : "";
-
-        return true;
-      });
-    });
-  });
-
-  return parsed;
 };
