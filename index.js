@@ -1,14 +1,17 @@
 // 🎯 Workout Plan Generator (OpenAI → Supabase) - V9
-// Re-enables inserts, includes availability, limitations, preferences in prompt
 
 import express from "express";
 import fetch from "node-fetch";
 import { config } from "dotenv";
 import crypto from "crypto";
+import generateInitialPlanRoute from "./routes/generateInitialPlan.js";
 config();
 
-const app = express();
+const app = express(); // ✅ Create the app instance first
 app.use(express.json());
+
+// ✅ THEN register your custom route
+app.use("/", generateInitialPlanRoute);
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
