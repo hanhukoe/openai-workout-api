@@ -95,6 +95,13 @@ try {
 
     const raw = await response.json();
     const content = raw.choices?.[0]?.message?.content || "";
+
+    return res.status(200).json({
+      message: "🧠 Raw OpenAI response for debugging",
+      raw_content: content,
+      usage,
+    });
+
     usage = raw.usage || {};
 
     try {
