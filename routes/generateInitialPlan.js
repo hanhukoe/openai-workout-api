@@ -94,12 +94,19 @@ router.post("/generate-initial-plan", async (req, res) => {
         try {
           const jsonStart = content.indexOf("{");
           const jsonEnd = content.lastIndexOf("}") + 1;
-          const jsonRaw = content.slice(jsonStart, jsonEnd);
-          const cleanedJson = jsonRaw.replace(/\/\/.*$/gm, ""); // remove JS-style comments
+          let jsonRaw = content.slice(jsonStart, jsonEnd);
+        
+          // Strip comments (//) and trailing commas
+          jsonRaw = jsonRaw
+            .replace(/\/\/.*$/gm, "")             // remove JS-style comments
+            .replace(/,\s*}/g, "}")               // trailing comma before object end
+            .replace(/,\s*]/g, "]");              // trailing comma before array end
+        
           usage = raw.usage || {};
-          return JSON.parse(cleanedJson);
+          return JSON.parse(jsonRaw);
         } catch (err) {
-          console.error("❌ JSON.parse failed on OpenAI response:", content);
+          console.error("❌ JSON.parse failed:", err);
+          console.log("🪵 Raw OpenAI content was:\n", content.slice(0, 500), "...");
           throw new Error("OpenAI response was not valid JSON.");
         }
       }, 2, 1500);
