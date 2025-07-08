@@ -5,7 +5,12 @@ import crypto from "crypto";
 
 import { buildPrompt } from "../utils/promptBuilder.js";
 import { validateWorkoutProgram } from "../utils/schemaValidator.js";
-import { insertProgramData, retry, trimQuote } from "../utils/helpers.js";
+import {
+  insertProgramData,
+  retry,
+  trimQuote,
+  cleanProgramStructure, // ⬅️ Added this line
+} from "../utils/helpers.js";
 import { getMockProgramResponse } from "../utils/mockResponse.js";
 
 dotenv.config();
@@ -97,17 +102,15 @@ router.post("/generate-initial-plan", async (req, res) => {
             console.error("⚠️ Could not match a JSON block in content:", content.slice(0, 300));
             throw new Error("No valid JSON block found in OpenAI response");
           }
-          
+
           let jsonRaw = match[1];
-          
-          // Remove trailing commas and comments
+
           jsonRaw = jsonRaw
-            .replace(/\/\/.*$/gm, "") // JS-style comments
+            .replace(/\/\/.*$/gm, "")
             .replace(/,\s*}/g, "}")
             .replace(/,\s*]/g, "]");
 
           console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
-          
           return JSON.parse(jsonRaw);
         } catch (err) {
           console.error("❌ JSON.parse failed:", err);
@@ -122,17 +125,10 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
-    // Ensure structure is valid even for light days
-    parsed.blocks?.forEach((block) =>
-      block.weeks?.forEach((week) =>
-        week.days?.forEach((day) => {
-          day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
-          day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
-          day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
-        })
-      )
-    );
+    // 🧼 Clean up the parsed data
+    parsed = cleanProgramStructure(parsed);
 
+    // ✅ Validate structure after cleaning
     const isValid = validateWorkoutProgram(parsed);
     if (!isValid) {
       console.error("❌ Validation failed. Parsed response:");
@@ -140,7 +136,7 @@ router.post("/generate-initial-plan", async (req, res) => {
       return res.status(422).json({ error: "Invalid OpenAI response format" });
     }
 
-    // Trim motivational quotes
+    // ✂️ Trim motivational quotes
     parsed.blocks?.forEach((block) =>
       block.weeks?.forEach((week) =>
         week.days?.forEach((day) => {
@@ -158,7 +154,7 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const program_generation_id = crypto.randomUUID();
 
-    // Save prompt + output to Supabase log
+    // 🪵 Save to generation log
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
