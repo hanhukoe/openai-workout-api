@@ -172,3 +172,6 @@ router.post("/generate-initial-plan", async (req, res) => {
     res.status(500).json({ error: "Something went wrong", detail: err.message });
   }
 });
+
+export default router;
+
