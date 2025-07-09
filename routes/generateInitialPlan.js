@@ -1,4 +1,28 @@
 import express from "express";
+import fetch from "node-fetch";
+import crypto from "crypto";
+import { config } from "dotenv";
+
+import { buildPrompt } from "../utils/buildPrompt.js";
+import { cleanProgramStructure } from "../utils/cleanProgramStructure.js";
+import { validateWorkoutProgram } from "../utils/validateWorkoutProgram.js";
+import { insertProgramData } from "../utils/insertProgramData.js";
+import { retry } from "../utils/retry.js";
+import { getMockProgramResponse } from "../mock/mockProgramResponse.js";
+import { trimQuote } from "../utils/trimQuote.js";
+
+config(); // ✅ Load .env variables
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+const headersWithAuth = {
+  apikey: SUPABASE_SERVICE_ROLE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  "Content-Type": "application/json",
+};
+
 const router = express.Router();
 
 router.post("/generate-initial-plan", async (req, res) => {
