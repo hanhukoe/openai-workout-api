@@ -1,17 +1,14 @@
 import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
-import { config } from "dotenv";
 
-import { buildPrompt } from "../utils/buildPrompt.js";
-import { cleanProgramStructure } from "../utils/cleanProgramStructure.js";
-import { validateWorkoutProgram } from "../utils/validateWorkoutProgram.js";
-import { insertProgramData } from "../utils/insertProgramData.js";
-import { retry } from "../utils/retry.js";
-import { getMockProgramResponse } from "../mock/mockProgramResponse.js";
-import { trimQuote } from "../utils/trimQuote.js";
-
-config(); // ✅ Load .env variables
+import { buildPrompt } from "../utils/promptBuilder.js";
+import { cleanProgramStructure } from "../utils/helpers.js";
+import { validateWorkoutProgram } from "../utils/schemaValidator.js";
+import { insertProgramData } from "../utils/helpers.js";
+import { retry } from "../utils/helpers.js";
+import { getMockProgramResponse } from "../utils/mockResponse.js";
+import { trimQuote } from "../utils/helpers.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -31,29 +28,31 @@ router.post("/generate-initial-plan", async (req, res) => {
 
   try {
     console.log("📥 Fetching user data...");
+
     const fetchTable = async (table) => {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
+      const result = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
         headers: headersWithAuth,
       });
-      return await res.json();
+      return result.json();
     };
 
-    const [intake, gyms, boutiques, equipment, limitations, benchmarks, availability, blackout, styles] =
-      await Promise.all([
-        fetchTable("program_intake"),
-        fetchTable("full_service_gyms"),
-        fetchTable("boutique_credits"),
-        fetchTable("home_equipment"),
-        fetchTable("limitations"),
-        fetchTable("benchmark_log"),
-        fetchTable("availability"),
-        fetchTable("blackout_dates"),
-        fetchTable("workout_styles"),
-      ]);
+    const [
+      intake, gyms, boutiques, equipment, limitations,
+      benchmarks, availability, blackout, styles,
+    ] = await Promise.all([
+      fetchTable("program_intake"),
+      fetchTable("full_service_gyms"),
+      fetchTable("boutique_credits"),
+      fetchTable("home_equipment"),
+      fetchTable("limitations"),
+      fetchTable("benchmark_log"),
+      fetchTable("availability"),
+      fetchTable("blackout_dates"),
+      fetchTable("workout_styles"),
+    ]);
 
     if (!intake.length) return res.status(404).json({ error: "User intake not found" });
 
-    const startDate = start_date ? new Date(start_date) : new Date();
     const profile = {
       user_id,
       intake: intake[0],
@@ -65,7 +64,7 @@ router.post("/generate-initial-plan", async (req, res) => {
       availability: availability[0] || {},
       blackout: blackout[0] || {},
       styles: styles[0] || {},
-      start_date: startDate,
+      start_date: start_date ? new Date(start_date) : new Date(),
     };
 
     const { prompt, promptMeta } = buildPrompt(profile);
@@ -98,13 +97,9 @@ router.post("/generate-initial-plan", async (req, res) => {
         usage = raw.usage || {};
 
         const match = rawContent.match(/```json\s*([\s\S]+?)\s*```/) || rawContent.match(/({[\s\S]+})/);
-        if (!match) {
-          throw new Error("No valid JSON block found in OpenAI response");
-        }
+        if (!match) throw new Error("No valid JSON block found in OpenAI response");
 
-        let jsonRaw = match[1];
-
-        jsonRaw = jsonRaw
+        let jsonRaw = match[1]
           .replace(/\/\/.*$/gm, "")
           .replace(/,\s*}/g, "}")
           .replace(/,\s*]/g, "]")
@@ -115,28 +110,24 @@ router.post("/generate-initial-plan", async (req, res) => {
           jsonRaw += "}";
         }
 
-        console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
         const parsedData = JSON.parse(jsonRaw);
-
         if (!parsedData.blocks || !parsedData.workouts) {
-          throw new Error("Parsed JSON is missing 'blocks' or 'workouts'");
+          throw new Error("Parsed JSON is missing required structure.");
         }
 
         return parsedData;
       }, 2, 1500);
 
       parsed = data;
-    } catch (e) {
-      console.warn("❌ GPT failed after retries. Using mock data instead.");
+    } catch (err) {
+      console.warn("❌ GPT failed after retries. Using mock data.");
       parsed = getMockProgramResponse();
     }
 
     parsed = cleanProgramStructure(parsed);
 
-    const isValid = validateWorkoutProgram(parsed);
-    if (!isValid) {
-      console.error("❌ Validation failed. Parsed response:");
-      console.dir(parsed, { depth: null });
+    if (!validateWorkoutProgram(parsed)) {
+      console.error("❌ Validation failed. Parsed response:", parsed);
       return res.status(422).json({ error: "Invalid OpenAI response format", raw_content: rawContent });
     }
 
