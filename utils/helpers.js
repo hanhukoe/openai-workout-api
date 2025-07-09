@@ -1,8 +1,23 @@
+import { generateId } from "./generateId.js";
+import { formatDate } from "./formatDate.js";
+import { config } from "dotenv";
+
+config();
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const headersWithAuth = {
+  apikey: SUPABASE_SERVICE_ROLE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  "Content-Type": "application/json",
+};
+
 export const insertProgramData = async (parsed, profile) => {
   const program_id = generateId();
   const user_id = profile.user_id;
   const startDate = formatDate(profile.start_date);
-  const duration = profile.intake.program_duration_weeks;
+  const duration = profile.intake?.program_duration_weeks || 12;
 
   const safeInsert = async (tableName, payload) => {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}`, {
@@ -21,14 +36,13 @@ export const insertProgramData = async (parsed, profile) => {
     return data;
   };
 
-  // 🟩 Insert the program
   await safeInsert("programs", [
     {
       program_id,
       user_id,
-      intake_id: profile.intake.intake_id,
-      program_title: parsed.program_title,
-      goal_summary: profile.intake.primary_goal,
+      intake_id: profile.intake?.intake_id ?? null,
+      program_title: parsed.program_title ?? "Untitled Program",
+      goal_summary: profile.intake?.primary_goal ?? "N/A",
       program_start_date: startDate,
       program_duration_weeks: duration,
       is_active: true,
@@ -37,7 +51,6 @@ export const insertProgramData = async (parsed, profile) => {
     },
   ]);
 
-  // 🟩 Loop through blocks (structure only)
   for (const block of parsed.blocks || []) {
     const block_id = generateId();
 
@@ -46,21 +59,21 @@ export const insertProgramData = async (parsed, profile) => {
         block_id,
         program_id,
         user_id,
-        block_title: block.title,
-        block_type: block.block_type,
-        summary: block.summary,
+        block_title: block.title ?? "Untitled Block",
+        block_type: block.block_type ?? "General",
+        summary: block.summary ?? "",
         week_range_start: block.week_range?.[0] ?? null,
         week_range_end: block.week_range?.[1] ?? null,
         created_at: new Date().toISOString(),
       },
     ]);
 
-    const weekStart = block.week_range?.[0];
-    const weekEnd = block.week_range?.[1];
+    const weekStart = block.week_range?.[0] ?? 1;
+    const weekEnd = block.week_range?.[1] ?? weekStart;
 
     for (let weekNum = weekStart; weekNum <= weekEnd; weekNum++) {
       const weekData = parsed.workouts?.[String(weekNum)];
-      if (!weekData) continue; // Skip if this week has no detailed workouts
+      if (!weekData) continue;
 
       const schedule_id = generateId();
 
@@ -84,11 +97,11 @@ export const insertProgramData = async (parsed, profile) => {
             workout_id,
             user_id,
             block_order: 1,
-            block_title: `${day.day || "Unknown Day"} - ${day.focus_area || "General"}`,
-            block_type: day.structure_type || "Unstructured",
+            block_title: `${day.day ?? "Day"} - ${day.focus_area ?? "General"}`,
+            block_type: day.structure_type ?? "Unstructured",
             rounds: null,
             duration_seconds: (day.duration_min || 0) * 60,
-            notes: day.quote || "",
+            notes: day.quote ?? "",
             created_at: new Date().toISOString(),
           },
         ]);
