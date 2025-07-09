@@ -1,23 +1,124 @@
-import { generateId } from "./generateId.js";
-import { formatDate } from "./formatDate.js";
-import { config } from "dotenv";
-
-config();
+import crypto from "crypto";
+import fetch from "node-fetch";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const headersWithAuth = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
-  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  Authorization: "Bearer " + SUPABASE_SERVICE_ROLE_KEY,
   "Content-Type": "application/json",
 };
 
+// Generate a UUID
+export const generateId = () => crypto.randomUUID();
+
+// Format date to YYYY-MM-DD (UTC-safe)
+export const formatDate = (date) => new Date(date).toISOString().split("T")[0];
+
+// Add days/weeks
+export const addDays = (date, numDays) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + numDays);
+  return result;
+};
+
+export const addWeeks = (date, numWeeks) => addDays(date, numWeeks * 7);
+
+// Calculate block date ranges
+export const calculateBlockDates = (startDate, weekCounts) => {
+  const blocks = [];
+  let current = new Date(startDate);
+
+  for (let weeks of weekCounts) {
+    const blockStart = new Date(current);
+    const blockEnd = addWeeks(current, weeks);
+    blocks.push({
+      block_start: formatDate(blockStart),
+      block_end: formatDate(addDays(blockEnd, -1)),
+    });
+    current = blockEnd;
+  }
+
+  return blocks;
+};
+
+// Retry wrapper for OpenAI / async ops
+export const retry = async (fn, maxRetries = 2, delayMs = 1000) => {
+  let lastErr;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < maxRetries) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+};
+
+// Enforce quote length
+export const trimQuote = (quote, maxLength = 100) => {
+  if (!quote) return "";
+  return quote.length > maxLength ? quote.slice(0, maxLength - 1) + "…" : quote;
+};
+
+// 🧼 Normalize parsed program data
+export const cleanProgramStructure = (parsed) => {
+  if (!parsed || !Array.isArray(parsed.blocks)) return parsed;
+
+  const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  parsed.blocks.forEach((block) => {
+    if (!Array.isArray(block.weeks)) {
+      block.weeks = [];
+      return;
+    }
+
+    block.weeks.forEach((week) => {
+      if (!Array.isArray(week.days)) {
+        week.days = [];
+        return;
+      }
+
+      const seenDays = new Set();
+
+      week.days = week.days.filter((day) => {
+        if (seenDays.has(day.day)) {
+          console.warn(`⚠️ Duplicate day "${day.day}" found — skipping.`);
+          return false;
+        }
+        seenDays.add(day.day);
+
+        day.warmup = Array.isArray(day.warmup) ? day.warmup : [];
+        day.main_set = Array.isArray(day.main_set) ? day.main_set : [];
+        day.cooldown = Array.isArray(day.cooldown) ? day.cooldown : [];
+
+        day.day = day.day ?? "Unknown";
+        day.focus_area = day.focus_area ?? "General";
+        day.duration_min = typeof day.duration_min === "number" ? day.duration_min : 0;
+        day.structure_type = day.structure_type ?? "Unstructured";
+        day.quote = typeof day.quote === "string" ? day.quote : "";
+
+        return true;
+      });
+
+      // 🧽 Optional: sort weekdays in logical order
+      week.days.sort((a, b) => {
+        return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+      });
+    });
+  });
+
+  return parsed;
+};
+
+// 🔁 Insert program data into Supabase
 export const insertProgramData = async (parsed, profile) => {
   const program_id = generateId();
   const user_id = profile.user_id;
   const startDate = formatDate(profile.start_date);
-  const duration = profile.intake?.program_duration_weeks || 12;
+  const duration = profile.intake.program_duration_weeks;
 
   const safeInsert = async (tableName, payload) => {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${tableName}`, {
@@ -40,9 +141,9 @@ export const insertProgramData = async (parsed, profile) => {
     {
       program_id,
       user_id,
-      intake_id: profile.intake?.intake_id ?? null,
-      program_title: parsed.program_title ?? "Untitled Program",
-      goal_summary: profile.intake?.primary_goal ?? "N/A",
+      intake_id: profile.intake.intake_id,
+      program_title: parsed.program_title,
+      goal_summary: profile.intake.primary_goal,
       program_start_date: startDate,
       program_duration_weeks: duration,
       is_active: true,
@@ -59,22 +160,16 @@ export const insertProgramData = async (parsed, profile) => {
         block_id,
         program_id,
         user_id,
-        block_title: block.title ?? "Untitled Block",
-        block_type: block.block_type ?? "General",
-        summary: block.summary ?? "",
+        block_title: block.title,
+        block_type: block.block_type,
+        summary: block.summary,
         week_range_start: block.week_range?.[0] ?? null,
         week_range_end: block.week_range?.[1] ?? null,
         created_at: new Date().toISOString(),
       },
     ]);
 
-    const weekStart = block.week_range?.[0] ?? 1;
-    const weekEnd = block.week_range?.[1] ?? weekStart;
-
-    for (let weekNum = weekStart; weekNum <= weekEnd; weekNum++) {
-      const weekData = parsed.workouts?.[String(weekNum)];
-      if (!weekData) continue;
-
+    for (const week of block.weeks || []) {
       const schedule_id = generateId();
 
       await safeInsert("program_schedule", [
@@ -83,12 +178,12 @@ export const insertProgramData = async (parsed, profile) => {
           program_id,
           user_id,
           block_id,
-          week_number: weekNum,
+          week_number: week.week_number,
           created_at: new Date().toISOString(),
         },
       ]);
 
-      for (const day of weekData.days || []) {
+      for (const day of week.days || []) {
         const workout_id = generateId();
 
         await safeInsert("workout_blocks", [
@@ -97,11 +192,11 @@ export const insertProgramData = async (parsed, profile) => {
             workout_id,
             user_id,
             block_order: 1,
-            block_title: `${day.day ?? "Day"} - ${day.focus_area ?? "General"}`,
-            block_type: day.structure_type ?? "Unstructured",
+            block_title: `${day.day || "Unknown Day"} - ${day.focus_area || "General"}`,
+            block_type: day.structure_type || "Unstructured",
             rounds: null,
             duration_seconds: (day.duration_min || 0) * 60,
-            notes: day.quote ?? "",
+            notes: day.quote || "",
             created_at: new Date().toISOString(),
           },
         ]);
