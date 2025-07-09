@@ -1,18 +1,18 @@
 // 🎯 Workout Plan Generator (OpenAI → Supabase)
 
-import express from "express";
-import { config } from "dotenv";
-import generateInitialPlanRoute from "./routes/generateInitialPlan.js";
+const express = require("express");
+const dotenv = require("dotenv");
+const generateInitialPlanRoute = require("./routes/generateInitialPlan.js");
 
-config(); // Load .env variables
+dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-// ✅ Register main route
+// ✅ Register your main route
 app.use("/", generateInitialPlanRoute);
 
-// 🩺 Optional: Health check route
+// 🩺 Optional: health check route
 app.get("/ping", (req, res) => {
   res.status(200).send("pong");
 });
