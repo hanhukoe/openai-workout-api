@@ -1,32 +1,3 @@
-import express from "express";
-import dotenv from "dotenv";
-import fetch from "node-fetch";
-import crypto from "crypto";
-
-import { buildPrompt } from "../utils/promptBuilder.js";
-import { validateWorkoutProgram } from "../utils/schemaValidator.js";
-import {
-  insertProgramData,
-  retry,
-  trimQuote,
-  cleanProgramStructure,
-} from "../utils/helpers.js";
-import { getMockProgramResponse } from "../utils/mockResponse.js";
-
-dotenv.config();
-const router = express.Router();
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const DEBUG_GPT = process.env.DEBUG_GPT === "true";
-
-const headersWithAuth = {
-  apikey: SUPABASE_SERVICE_ROLE_KEY,
-  Authorization: "Bearer " + SUPABASE_SERVICE_ROLE_KEY,
-  "Content-Type": "application/json",
-};
-
 router.post("/generate-initial-plan", async (req, res) => {
   const { user_id, start_date } = req.body;
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
@@ -105,25 +76,25 @@ router.post("/generate-initial-plan", async (req, res) => {
         }
 
         let jsonRaw = match[1];
-        
+
         jsonRaw = jsonRaw
           .replace(/\/\/.*$/gm, "")       // remove JS-style comments
           .replace(/,\s*}/g, "}")         // trailing commas in objects
           .replace(/,\s*]/g, "]")         // trailing commas in arrays
           .trim();
-        
+
         // ✅ Attempt to close the final JSON brace if it looks truncated
         if (!jsonRaw.endsWith("}")) {
           console.warn("⚠️ JSON response may be truncated. Appending closing brace.");
           jsonRaw += "}";
         }
-        
+
         console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
         const parsedData = JSON.parse(jsonRaw);
 
-
-        if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
-          throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
+        // Basic structure check
+        if (!parsedData.blocks || !parsedData.workouts) {
+          throw new Error("Parsed JSON is missing 'blocks' or 'workouts'");
         }
 
         return parsedData;
@@ -135,15 +106,6 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
-    // 🧪 Debug Mode
-    if (DEBUG_GPT) {
-      return res.status(200).json({
-        message: "🧠 Raw OpenAI response for debugging",
-        raw_content: rawContent,
-        usage,
-      });
-    }
-
     // 🧼 Clean up the parsed data
     parsed = cleanProgramStructure(parsed);
 
@@ -152,16 +114,14 @@ router.post("/generate-initial-plan", async (req, res) => {
     if (!isValid) {
       console.error("❌ Validation failed. Parsed response:");
       console.dir(parsed, { depth: null });
-      return res.status(422).json({ error: "Invalid OpenAI response format" });
+      return res.status(422).json({ error: "Invalid OpenAI response format", raw_content: rawContent });
     }
 
     // ✂️ Trim motivational quotes
-    parsed.blocks?.forEach((block) =>
-      block.weeks?.forEach((week) =>
-        week.days?.forEach((day) => {
-          day.quote = trimQuote(day.quote, 100);
-        })
-      )
+    Object.values(parsed.workouts || {}).forEach((week) =>
+      week.days?.forEach((day) => {
+        day.quote = trimQuote(day.quote, 100);
+      })
     );
 
     const prompt_tokens = usage.prompt_tokens || 0;
@@ -196,25 +156,19 @@ router.post("/generate-initial-plan", async (req, res) => {
       ]),
     });
 
-    const totalWeeks = parsed.blocks.reduce((sum, b) => sum + (b.weeks?.length || 0), 0);
-    if (totalWeeks < 3) {
-      console.warn("⚠️ GPT returned fewer than 3 weeks. Consider retrying or refining the prompt.");
-    }
-
     const program_id = await insertProgramData(parsed, profile);
 
     res.status(200).json({
       message: "✅ Program successfully created!",
       program_id,
       title: parsed.program_title,
-      weeks_generated: 3,
+      weeks_generated: Object.keys(parsed.workouts || {}).length,
       tokens_used: total_tokens,
       estimated_cost_usd,
+      raw_content: rawContent, // <-- Always return this now for debugging
     });
   } catch (err) {
     console.error("🔥 Error generating plan:", err.message);
     res.status(500).json({ error: "Something went wrong", detail: err.message });
   }
 });
-
-export default router;
