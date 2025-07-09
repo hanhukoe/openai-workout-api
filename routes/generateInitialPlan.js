@@ -1,7 +1,6 @@
 import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
-
 import { buildPrompt } from "../utils/promptBuilder.js";
 import { cleanProgramStructure } from "../utils/helpers.js";
 import { validateWorkoutProgram } from "../utils/schemaValidator.js";
@@ -27,8 +26,6 @@ router.post("/generate-initial-plan", async (req, res) => {
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
   try {
-    console.log("📥 Fetching user data...");
-
     const fetchTable = async (table) => {
       const result = await fetch(`${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`, {
         headers: headersWithAuth,
@@ -69,7 +66,6 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const { prompt, promptMeta } = buildPrompt(profile);
 
-    console.log("🧠 Sending prompt to OpenAI...");
     let parsed;
     let usage = {};
     let rawContent = "";
@@ -106,7 +102,6 @@ router.post("/generate-initial-plan", async (req, res) => {
           .trim();
 
         if (!jsonRaw.endsWith("}")) {
-          console.warn("⚠️ JSON response may be truncated. Appending closing brace.");
           jsonRaw += "}";
         }
 
@@ -119,15 +114,13 @@ router.post("/generate-initial-plan", async (req, res) => {
       }, 2, 1500);
 
       parsed = data;
-    } catch (err) {
-      console.warn("❌ GPT failed after retries. Using mock data.");
+    } catch {
       parsed = getMockProgramResponse();
     }
 
     parsed = cleanProgramStructure(parsed);
 
     if (!validateWorkoutProgram(parsed)) {
-      console.error("❌ Validation failed. Parsed response:", parsed);
       return res.status(422).json({ error: "Invalid OpenAI response format", raw_content: rawContent });
     }
 
@@ -180,7 +173,6 @@ router.post("/generate-initial-plan", async (req, res) => {
       raw_content: rawContent,
     });
   } catch (err) {
-    console.error("🔥 Error generating plan:", err.message);
     res.status(500).json({ error: "Something went wrong", detail: err.message });
   }
 });
