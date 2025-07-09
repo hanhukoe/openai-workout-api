@@ -1,4 +1,4 @@
-// 🎯 Workout Plan Generator (OpenAI → Supabase)
+// 🎯 Workout Plan Generator (OpenAI → Supabase) - ES Module Compatible
 
 import express from "express";
 import fetch from "node-fetch";
@@ -11,7 +11,7 @@ config();
 const app = express();
 app.use(express.json());
 
-// ✅ Custom route for generating a plan
+// 🛠️ Mount your custom route
 app.use("/", generateInitialPlanRoute);
 
 const PORT = process.env.PORT || 3000;
