@@ -1,3 +1,6 @@
+import express from "express";
+const router = express.Router();
+
 router.post("/generate-initial-plan", async (req, res) => {
   const { user_id, start_date } = req.body;
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
@@ -78,12 +81,11 @@ router.post("/generate-initial-plan", async (req, res) => {
         let jsonRaw = match[1];
 
         jsonRaw = jsonRaw
-          .replace(/\/\/.*$/gm, "")       // remove JS-style comments
-          .replace(/,\s*}/g, "}")         // trailing commas in objects
-          .replace(/,\s*]/g, "]")         // trailing commas in arrays
+          .replace(/\/\/.*$/gm, "")
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]")
           .trim();
 
-        // ✅ Attempt to close the final JSON brace if it looks truncated
         if (!jsonRaw.endsWith("}")) {
           console.warn("⚠️ JSON response may be truncated. Appending closing brace.");
           jsonRaw += "}";
@@ -92,7 +94,6 @@ router.post("/generate-initial-plan", async (req, res) => {
         console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
         const parsedData = JSON.parse(jsonRaw);
 
-        // Basic structure check
         if (!parsedData.blocks || !parsedData.workouts) {
           throw new Error("Parsed JSON is missing 'blocks' or 'workouts'");
         }
@@ -106,10 +107,8 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
-    // 🧼 Clean up the parsed data
     parsed = cleanProgramStructure(parsed);
 
-    // ✅ Validate structure after cleaning
     const isValid = validateWorkoutProgram(parsed);
     if (!isValid) {
       console.error("❌ Validation failed. Parsed response:");
@@ -117,7 +116,6 @@ router.post("/generate-initial-plan", async (req, res) => {
       return res.status(422).json({ error: "Invalid OpenAI response format", raw_content: rawContent });
     }
 
-    // ✂️ Trim motivational quotes
     Object.values(parsed.workouts || {}).forEach((week) =>
       week.days?.forEach((day) => {
         day.quote = trimQuote(day.quote, 100);
@@ -133,7 +131,6 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const program_generation_id = crypto.randomUUID();
 
-    // 🪵 Save to generation log
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
@@ -165,7 +162,7 @@ router.post("/generate-initial-plan", async (req, res) => {
       weeks_generated: Object.keys(parsed.workouts || {}).length,
       tokens_used: total_tokens,
       estimated_cost_usd,
-      raw_content: rawContent, // <-- Always return this now for debugging
+      raw_content: rawContent,
     });
   } catch (err) {
     console.error("🔥 Error generating plan:", err.message);
@@ -174,4 +171,3 @@ router.post("/generate-initial-plan", async (req, res) => {
 });
 
 export default router;
-
