@@ -89,7 +89,7 @@ export function buildPrompt(profile) {
     `Return the full program structure covering all ${weeks} weeks in the 'blocks' section. Only generate detailed daily workouts for weeks 1, 2, and 3 — do NOT include any daily entries beyond week 3.`,
     "Ensure your response is valid JSON and ends with a single closing brace '}'.",
     "Do NOT include any notes, comments, or markdown formatting — only raw JSON.",
-    "The final JSON must be syntactically valid and within ~2000 tokens total. Keep responses concise.",
+    "The final JSON must be syntactically valid. Keep responses concise but prioritize completeness over brevity. You may use up to ~4000 tokens if needed, but do not cut off the final week early.",
     "",
     "-- DESIGN RULES --",
     "- Only include daily workouts for weeks 1, 2, and 3. Do NOT include future weeks.",
