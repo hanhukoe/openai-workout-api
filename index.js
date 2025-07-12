@@ -1,4 +1,4 @@
-// 🎯 Workout Plan Generator (OpenAI → Supabase) - V9
+// ✅ index.js — Cleaned and Updated
 
 import express from "express";
 import fetch from "node-fetch";
@@ -7,10 +7,8 @@ import crypto from "crypto";
 import generateInitialPlanRoute from "./routes/generateInitialPlan.js";
 config();
 
-const app = express(); // ✅ Create the app instance first
+const app = express();
 app.use(express.json());
-
-// ✅ THEN register your custom route
 app.use("/", generateInitialPlanRoute);
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -29,8 +27,6 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
   if (!Array.isArray(exercises) || exercises.length === 0) return;
   const block_id = crypto.randomUUID();
 
-  console.log("🧱 Inserting workout block:", title);
-
   await fetch(`${SUPABASE_URL}/rest/v1/workout_blocks`, {
     method: "POST",
     headers: headersWithAuth,
@@ -44,8 +40,8 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
       rounds: null,
       duration_seconds: null,
       notes: "",
-      created_at: new Date().toISOString()
-    }])
+      created_at: new Date().toISOString(),
+    }]),
   });
 
   const formattedExercises = exercises.map((ex, i) => {
@@ -72,14 +68,14 @@ const insertExerciseBlock = async (title, type, exercises, user_id, workout_id, 
       exercise_speed: ex.speed ?? null,
       exercise_distance_meters: ex.distance_m ?? null,
       exercise_notes: ex.notes || "",
-      exercise_description: ""
+      exercise_description: "",
     };
   });
 
   await fetch(`${SUPABASE_URL}/rest/v1/workout_exercises`, {
     method: "POST",
     headers: headersWithAuth,
-    body: JSON.stringify(formattedExercises)
+    body: JSON.stringify(formattedExercises),
   });
 };
 
@@ -95,7 +91,6 @@ app.post("/generate-plan", async (req, res) => {
       return await response.json();
     };
 
-    console.log("📥 Fetching user context...");
     const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData, availabilityData] = await Promise.all([
       fetchFromSupabase("program_intake"),
       fetchFromSupabase("full_service_gyms"),
@@ -103,7 +98,7 @@ app.post("/generate-plan", async (req, res) => {
       fetchFromSupabase("home_equipment"),
       fetchFromSupabase("limitations"),
       fetchFromSupabase("benchmark_log"),
-      fetchFromSupabase("availability")
+      fetchFromSupabase("availability"),
     ]);
 
     if (!intakeData || intakeData.length === 0) {
@@ -131,24 +126,7 @@ app.post("/generate-plan", async (req, res) => {
       home_equipment: equipment.flatMap(e => e.equipment_list || []),
     };
 
-    const prompt = `You are a certified personal trainer.
-
-Using the user's profile, design a personalized, progressive training program over ${clientProfile.program_duration_weeks} weeks. Structure it into logical blocks (e.g., Base, Build, Peak). Each week has 7 days. Each day includes:
-- day_name (Monday, Tuesday, etc.)
-- focus_area
-- duration_min
-- structure_type (e.g., training, recovery)
-- warmup (array of exercises: name, sets, reps)
-- main_set (same format)
-- cooldown (array: name)
-- quote
-
-❗ DO NOT assign workouts on unavailable days: ${clientProfile.unavailable_days.join(", ") || "none"}.
-❗ Accommodate these limitations: ${clientProfile.limitations || "none"}.
-💡 Keep sessions to ~${clientProfile.session_length_minutes} min and ${clientProfile.days_per_week} days/week.
-🏋️ Use appropriate equipment: ${clientProfile.home_equipment.join(", ") || "bodyweight only"}.
-
-Return a valid JSON object only. Start with { and end with }.`
+    const prompt = `You are a certified personal trainer.\n\nUsing the user's profile, design a personalized, progressive training program over ${clientProfile.program_duration_weeks} weeks. Structure it into logical blocks (e.g., Base, Build, Peak). Each week has 7 days. Each day includes:\n- day_name (Monday, Tuesday, etc.)\n- focus_area\n- duration_min\n- structure_type (e.g., training, recovery)\n- warmup (array of exercises: name, sets, reps)\n- main_set (same format)\n- cooldown (array: name)\n- quote\n\n❗ DO NOT assign workouts on unavailable days: ${clientProfile.unavailable_days.join(", ") || "none"}.\n❗ Accommodate these limitations: ${clientProfile.limitations || "none"}.\n💡 Keep sessions to ~${clientProfile.session_length_minutes} min and ${clientProfile.days_per_week} days/week.\n🏋️ Use appropriate equipment: ${clientProfile.home_equipment.join(", ") || "bodyweight only"}.\n\nReturn a valid JSON object only. Start with { and end with }.`;
 
     const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -160,8 +138,7 @@ Return a valid JSON object only. Start with { and end with }.`
         model: "gpt-4-turbo",
         messages: [
           { role: "system", content: prompt },
-          { role: "user", content: `Client profile:
-${JSON.stringify(clientProfile, null, 2)}` }
+          { role: "user", content: `Client profile:\n${JSON.stringify(clientProfile, null, 2)}` },
         ],
         temperature: 0.7,
       }),
@@ -203,14 +180,14 @@ ${JSON.stringify(clientProfile, null, 2)}` }
         program_duration_weeks: intake.program_duration_weeks,
         is_active: true,
         created_at: new Date().toISOString(),
-        version_number: 1
-      }])
+        version_number: 1,
+      }]),
     });
 
     res.json({
       message: "✅ Workout program parsed and inserted successfully!",
       title: workoutJson.program_title,
-      block_count: workoutJson.blocks.length
+      block_count: workoutJson.blocks.length,
     });
 
   } catch (err) {
