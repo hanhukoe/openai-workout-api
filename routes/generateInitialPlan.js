@@ -1,3 +1,5 @@
+// ✅ generateInitialPlan.js — Cleaned and Updated
+
 import express from "express";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
@@ -105,22 +107,21 @@ router.post("/generate-initial-plan", async (req, res) => {
         }
 
         let jsonRaw = match[1];
-        
+
         jsonRaw = jsonRaw
           .replace(/\/\/.*$/gm, "")       // remove JS-style comments
           .replace(/,\s*}/g, "}")         // trailing commas in objects
           .replace(/,\s*]/g, "]")         // trailing commas in arrays
+          .replace(/"quote"\s*:/g, '"quote_text":')
           .trim();
-        
-        // ✅ Attempt to close the final JSON brace if it looks truncated
+
         if (!jsonRaw.endsWith("}")) {
           console.warn("⚠️ JSON response may be truncated. Appending closing brace.");
           jsonRaw += "}";
         }
-        
+
         console.log("🔎 Cleaned JSON snippet:", jsonRaw.slice(0, 300) + "...");
         const parsedData = JSON.parse(jsonRaw);
-
 
         if (!parsedData.blocks || !Array.isArray(parsedData.blocks)) {
           throw new Error("Parsed JSON is missing 'blocks' or has incorrect format");
@@ -135,7 +136,6 @@ router.post("/generate-initial-plan", async (req, res) => {
       parsed = getMockProgramResponse();
     }
 
-    // 🧪 Debug Mode
     if (DEBUG_GPT) {
       return res.status(200).json({
         message: "🧠 Raw OpenAI response for debugging",
@@ -144,25 +144,18 @@ router.post("/generate-initial-plan", async (req, res) => {
       });
     }
 
-    // 🧼 Clean up the parsed data
     parsed = cleanProgramStructure(parsed);
 
-    // ✅ Validate structure after cleaning
     const isValid = validateWorkoutProgram(parsed);
-    if (!isValid) {
+    if (!isValid || !Array.isArray(parsed.daily_workouts)) {
       console.error("❌ Validation failed. Parsed response:");
       console.dir(parsed, { depth: null });
       return res.status(422).json({ error: "Invalid OpenAI response format" });
     }
 
-    // ✂️ Trim motivational quotes
-    parsed.blocks?.forEach((block) =>
-      block.weeks?.forEach((week) =>
-        week.days?.forEach((day) => {
-          day.quote = trimQuote(day.quote, 100);
-        })
-      )
-    );
+    parsed.daily_workouts.forEach((day) => {
+      day.quote_text = trimQuote(day.quote_text, 100);
+    });
 
     const prompt_tokens = usage.prompt_tokens || 0;
     const completion_tokens = usage.completion_tokens || 0;
@@ -173,7 +166,6 @@ router.post("/generate-initial-plan", async (req, res) => {
 
     const program_generation_id = crypto.randomUUID();
 
-    // 🪵 Save to generation log
     await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
@@ -196,7 +188,8 @@ router.post("/generate-initial-plan", async (req, res) => {
       ]),
     });
 
-    const totalWeeks = parsed.blocks.reduce((sum, b) => sum + (b.weeks?.length || 0), 0);
+    const uniqueWeeks = new Set(parsed.daily_workouts.map(d => d.week_number));
+    const totalWeeks = uniqueWeeks.size;
     if (totalWeeks < 3) {
       console.warn("⚠️ GPT returned fewer than 3 weeks. Consider retrying or refining the prompt.");
     }
@@ -207,7 +200,7 @@ router.post("/generate-initial-plan", async (req, res) => {
       message: "✅ Program successfully created!",
       program_id,
       title: parsed.program_title,
-      weeks_generated: 3,
+      weeks_generated: totalWeeks,
       tokens_used: total_tokens,
       estimated_cost_usd,
     });
