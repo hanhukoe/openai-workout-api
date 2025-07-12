@@ -17,7 +17,7 @@ export function buildPrompt(profile) {
   const promptLines = [
     "You are a highly experienced personal trainer specializing in:",
     "- Functional strength and conditioning",
-    "- Race prep (e.g., HYROX, Spartan)",
+    "- Race prep (e.g., HYROX, Spartan, Marathon)",
     "- Recovery, injury-aware training, and adaptive programs",
     "",
     `Design a ${weeks}-week fitness program for the following client goal: "${goal}".`,
@@ -33,68 +33,73 @@ export function buildPrompt(profile) {
     `- Physical Limitations: ${limitationsText}`,
     `- Available Equipment: ${equipmentStr}`,
     "",
-    "-- STRUCTURE RULES --",
-    "Break the program into 3–4 logical training blocks (e.g., Base, Build, Peak, Taper).",
-    "Each block must include: title, block_type, summary, and week_range.",
-    "Each block MUST include a `weeks` array with exactly one entry for every week in the block.",
-    "Each `week` must include the correct `week_number`, even if `days` is empty.",
-    "Only weeks 1 through 3 should include full day-by-day workouts.",
-    "Weeks 4 and later should still include `week_number` and `days: []`.",
+    "-- PROGRAM DESIGN --",
+    `1. Build a full ${weeks}-week program, structured into 3–5 clear training blocks (e.g., Base, Build, Peak, Taper) that support the client's goal.`,
+    "2. Each block must include: title, block_goal (main training goal), block_summary (types of exercises), and week_range (e.g., [1, 3]).",
+    "3. Then generate detailed day-by-day workouts ONLY for weeks 1 to 3 (exactly 21 days). These should reflect the training blocks.",
+    "4. Each daily workout must include the following fields:",
+    "   - title",
+    "   - week_number (1–3)",
+    "   - day_number (1–7)",
+    "   - duration_min",
+    "   - focus_area (e.g., cardio, arms and back, rest day, etc.)",
+    "   - structure_type (e.g., EMOM, circuits, rest day, etc.)",
+    "   - quote_text (short, max 100 characters)",
+    "   - warmup: array of { name: string }",
+    "   - main_set: array of { name: string, sets: int, reps: int, rest_after_sec: int }",
+    "   - cooldown: array of { name: string }",
     "",
     "-- RESPONSE FORMAT --",
-    "Return ONLY strict JSON — do NOT include any comments, notes, or triple backticks.",
-    "Ensure your response is valid JSON and ends with a closing brace `}`.",
+    "Return a single JSON object with exactly two top-level keys: 'blocks' and 'daily_workouts'.",
+    "Do NOT nest daily_workouts inside blocks. These must be separate arrays.",
+    "Return ONLY valid JSON with the following structure (no markdown, no extra commentary):",
     `{
   "program_title": "string",
   "blocks": [
     {
       "title": "string",
-      "block_type": "string",
-      "summary": "string",
-      "week_range": [start_week, end_week],
-      "weeks": [
+      "block_goal": "string",
+      "block_summary": "string",
+      "week_range": [start_week, end_week]
+    }
+  ],
+  "daily_workouts": [
+    {
+      "title": "string",
+      "week_number": integer (1–3),
+      "day_number": integer (1–7),
+      "duration_min": integer,
+      "focus_area": "string",
+      "structure_type": "string",
+      "quote_text": "string (max 100 characters)",
+      "warmup": [ { "name": "string" } ],
+      "main_set": [
         {
-          "week_number": integer,
-          "days": [
-            {
-              "day": "string (e.g., Monday)",
-              "focus_area": "string",
-              "duration_min": integer,
-              "structure_type": "string",
-              "quote": "string (max 100 characters)",
-              "warmup": [ { "name": "string" }, ... ],
-              "main_set": [
-                { 
-                  "name": "string", 
-                  "sets": int, 
-                  "reps": int, 
-                  "rest_after_sec": int 
-                },
-                ...
-              ],
-              "cooldown": [ { "name": "string" }, ... ]
-            }
-          ]
+          "name": "string",
+          "sets": integer,
+          "reps": integer,
+          "rest_after_sec": integer
         }
-      ]
+      ],
+      "cooldown": [ { "name": "string" } ]
     }
   ]
 }`,
+    "Include ONLY the fields exactly as described — do NOT add extra keys or fields.",
+    `Return the full program structure covering all ${weeks} weeks in the 'blocks' section. Only generate detailed daily workouts for weeks 1, 2, and 3 — do NOT include any daily entries beyond week 3.`,
+    "Ensure your response is valid JSON and ends with a single closing brace '}'.",
+    "Do NOT include any notes, comments, or markdown formatting — only raw JSON.",
+    "The final JSON must be syntactically valid and within ~2000 tokens total. Keep responses concise.",
     "",
     "-- DESIGN RULES --",
-    `- Build a full ${weeks}-week program using well-structured training blocks.`,
-    "- Do NOT skip or omit any weeks — include every week explicitly.",
-    "- Only fill out detailed `days` for weeks 1, 2, and 3.",
-    "- Use `days: []` for weeks 4 and onward — but include the `week_number`.",
-    "- Include all 7 days per week (use rest days where needed).",
-    "- Never schedule workouts on blackout/unavailable days.",
+    "- Only include daily workouts for weeks 1, 2, and 3. Do NOT include future weeks.",
+    "- Every workout must include warmup, main_set, and cooldown arrays (they can be empty).",
+    "- Never schedule workouts on unavailable days.",
     "- Avoid more than 2 consecutive rest days.",
-    "- Use gym/studio access only if available or credits exist.",
-    "- Always respect physical limitations — never assign unsafe exercises.",
-    "- Dislikes can be overridden if needed — but justify and minimize them.",
-    "- Every workout must include warmup, main_set, and cooldown arrays (can be empty).",
-    "- Quotes must be brief, motivating, and max 100 characters.",
-    "- Apply progressive overload: modest for beginners, aggressive for advanced."
+    "- Dislikes may be used sparingly if justified.",
+    "- Respect physical limitations — do NOT assign unsafe exercises.",
+    "- Include progressive overload where applicable.",
+    "- quote_text must be motivational and under 100 characters."
   ];
 
   const prompt = promptLines.join("\n");
@@ -108,7 +113,7 @@ export function buildPrompt(profile) {
     trainingPreferences,
     unavailable,
     limitations: limitationsText,
-    equipmentCount: equipmentList.length,
+    equipmentCount: equipmentList.length
   };
 
   return { prompt, promptMeta };
