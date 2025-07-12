@@ -21,13 +21,13 @@ export function validateWorkoutProgram(data) {
         return false;
       }
 
-      if (!block.block_type || typeof block.block_type !== "string") {
-        console.error(`❌ Block ${blockIndex + 1} is missing or has an invalid block_type`);
+      if (!block.block_goal || typeof block.block_goal !== "string") {
+        console.error(`❌ Block ${blockIndex + 1} is missing or has an invalid block_goal`);
         return false;
       }
 
-      if (!block.summary || typeof block.summary !== "string") {
-        console.error(`❌ Block ${blockIndex + 1} is missing or has an invalid summary`);
+      if (!block.block_summary || typeof block.block_summary !== "string") {
+        console.error(`❌ Block ${blockIndex + 1} is missing or has an invalid block_summary`);
         return false;
       }
 
@@ -39,67 +39,57 @@ export function validateWorkoutProgram(data) {
         console.error(`❌ Block ${blockIndex + 1} has an invalid week_range`);
         return false;
       }
+    }
 
-      if (!Array.isArray(block.weeks)) {
-        console.error(`❌ Block ${blockIndex + 1} → weeks is not an array`);
+    // ✅ Validate daily_workouts
+    if (!Array.isArray(data.daily_workouts)) {
+      console.error("❌ 'daily_workouts' is not an array");
+      return false;
+    }
+
+    for (const [i, workout] of data.daily_workouts.entries()) {
+      const requiredFields = [
+        "title",
+        "week_number",
+        "day_number",
+        "duration_min",
+        "focus_area",
+        "structure_type",
+        "quote_text",
+        "warmup",
+        "main_set",
+        "cooldown",
+      ];
+
+      for (const field of requiredFields) {
+        if (!(field in workout)) {
+          console.error(`❌ Missing "${field}" in daily_workouts[${i}]`);
+          return false;
+        }
+      }
+
+      if (
+        typeof workout.title !== "string" ||
+        typeof workout.focus_area !== "string" ||
+        typeof workout.structure_type !== "string" ||
+        typeof workout.quote_text !== "string"
+      ) {
+        console.error(`❌ Invalid string field in daily_workouts[${i}]`);
         return false;
       }
 
-      for (const [weekIndex, week] of block.weeks.entries()) {
-        if (!("week_number" in week) || typeof week.week_number !== "number") {
-          console.error(`❌ Block ${blockIndex + 1} → Week ${weekIndex + 1} is missing or has invalid week_number`);
-          return false;
-        }
+      if (typeof workout.duration_min !== "number") {
+        console.error(`❌ "duration_min" should be a number in daily_workouts[${i}]`);
+        return false;
+      }
 
-        // Default to empty array if days missing
-        if (!Array.isArray(week.days)) {
-          console.warn(`⚠️ Block ${blockIndex + 1} → Week ${weekIndex + 1} missing days array. Defaulting to [].`);
-          week.days = [];
-        }
-
-        for (const [dayIndex, day] of week.days.entries()) {
-          const requiredFields = [
-            "day",
-            "focus_area",
-            "duration_min",
-            "structure_type",
-            "quote",
-            "warmup",
-            "main_set",
-            "cooldown"
-          ];
-
-          for (const field of requiredFields) {
-            if (!(field in day)) {
-              console.error(`❌ Missing "${field}" in Block ${blockIndex + 1} → Week ${weekIndex + 1} → Day ${dayIndex + 1}`);
-              return false;
-            }
-          }
-
-          if (
-            typeof day.day !== "string" ||
-            typeof day.focus_area !== "string" ||
-            typeof day.structure_type !== "string" ||
-            typeof day.quote !== "string"
-          ) {
-            console.error(`❌ Invalid string field in Block ${blockIndex + 1} → Week ${weekIndex + 1} → Day ${dayIndex + 1}`);
-            return false;
-          }
-
-          if (typeof day.duration_min !== "number") {
-            console.error(`❌ "duration_min" should be a number in Block ${blockIndex + 1} → Week ${weekIndex + 1} → Day ${dayIndex + 1}`);
-            return false;
-          }
-
-          if (
-            !Array.isArray(day.warmup) ||
-            !Array.isArray(day.main_set) ||
-            !Array.isArray(day.cooldown)
-          ) {
-            console.error(`❌ warmup/main_set/cooldown must be arrays in Block ${blockIndex + 1} → Week ${weekIndex + 1} → Day ${dayIndex + 1}`);
-            return false;
-          }
-        }
+      if (
+        !Array.isArray(workout.warmup) ||
+        !Array.isArray(workout.main_set) ||
+        !Array.isArray(workout.cooldown)
+      ) {
+        console.error(`❌ warmup/main_set/cooldown must be arrays in daily_workouts[${i}]`);
+        return false;
       }
     }
 
