@@ -163,24 +163,34 @@ export const insertProgramData = async (parsed, profile) => {
       for (const day of week.days || []) {
         const schedule_id = generateId();
         const workout_id = generateId();
-
+    
+        // 🧠 Determine if it's a rest day based on structure_type
+        const restKeywords = ["rest", "rest day", "recovery", "off", "recovery day"];
+        const isRestDay = restKeywords.includes((day.structure_type || "").toLowerCase().trim());
+    
+        // You’ll need to compute the actual schedule_date here too if not already
+        const schedule_date = formatDate(addDays(profile.start_date, (week.week_number - 1) * 7 + (day.day_number - 1)));
+    
         await safeInsert("program_schedule", [
           {
             schedule_id,
             program_id,
             user_id,
             block_id,
-            week_number: week.week_number,
+            schedule_date,
+            week_number: day.week_number,
             day_number: day.day_number,
-            day_of_week: day.day,
-            focus_area: day.focus_area,
             is_generated: true,
-            is_rest_day: day.structure_type.toLowerCase().includes("rest"),
+            is_rest_day: isRestDay,
             status: "planned",
-            schedule_date: null,
+            focus_area: day.focus_area || "General",
+            day_of_week: WEEKDAYS[(day.day_number - 1) % 7],
             created_at: new Date().toISOString(),
           },
         ]);
+
+    // 🏋️ Insert workout and blocks/exercises here (after this)
+
 
         await safeInsert("workouts", [
           {
