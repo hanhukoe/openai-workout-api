@@ -1,3 +1,5 @@
+// ✅ helpers.js — Cleaned and Updated
+
 import crypto from "crypto";
 import fetch from "node-fetch";
 
@@ -10,13 +12,10 @@ const headersWithAuth = {
   "Content-Type": "application/json",
 };
 
-// Generate a UUID
 export const generateId = () => crypto.randomUUID();
 
-// Format date to YYYY-MM-DD (UTC-safe)
 export const formatDate = (date) => new Date(date).toISOString().split("T")[0];
 
-// Add days/weeks
 export const addDays = (date, numDays) => {
   const result = new Date(date);
   result.setDate(result.getDate() + numDays);
@@ -25,7 +24,6 @@ export const addDays = (date, numDays) => {
 
 export const addWeeks = (date, numWeeks) => addDays(date, numWeeks * 7);
 
-// Calculate block date ranges
 export const calculateBlockDates = (startDate, weekCounts) => {
   const blocks = [];
   let current = new Date(startDate);
@@ -43,7 +41,6 @@ export const calculateBlockDates = (startDate, weekCounts) => {
   return blocks;
 };
 
-// Retry wrapper for OpenAI / async ops
 export const retry = async (fn, maxRetries = 2, delayMs = 1000) => {
   let lastErr;
   for (let i = 0; i <= maxRetries; i++) {
@@ -57,13 +54,11 @@ export const retry = async (fn, maxRetries = 2, delayMs = 1000) => {
   throw lastErr;
 };
 
-// Enforce quote length
 export const trimQuote = (quote, maxLength = 100) => {
   if (!quote) return "";
   return quote.length > maxLength ? quote.slice(0, maxLength - 1) + "…" : quote;
 };
 
-// 🧼 Normalize parsed program data
 export const cleanProgramStructure = (parsed) => {
   if (!parsed || !Array.isArray(parsed.blocks)) return parsed;
 
@@ -103,17 +98,13 @@ export const cleanProgramStructure = (parsed) => {
         return true;
       });
 
-      // 🧽 Optional: sort weekdays in logical order
-      week.days.sort((a, b) => {
-        return dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
-      });
+      week.days.sort((a, b) => dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day));
     });
   });
 
   return parsed;
 };
 
-// 🔁 Insert program data into Supabase
 export const insertProgramData = async (parsed, profile) => {
   const program_id = generateId();
   const user_id = profile.user_id;
@@ -161,50 +152,55 @@ export const insertProgramData = async (parsed, profile) => {
         program_id,
         user_id,
         block_title: block.title,
-        block_type: block.block_type,
-        summary: block.summary,
-        week_range_start: block.week_range?.[0] ?? null,
-        week_range_end: block.week_range?.[1] ?? null,
+        block_goal: block.block_goal,
+        block_summary: block.block_summary,
+        block_order: parsed.blocks.indexOf(block) + 1,
         created_at: new Date().toISOString(),
       },
     ]);
 
     for (const week of block.weeks || []) {
-      const schedule_id = generateId();
-
-      await safeInsert("program_schedule", [
-        {
-          schedule_id,
-          program_id,
-          user_id,
-          block_id,
-          week_number: week.week_number,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-
       for (const day of week.days || []) {
+        const schedule_id = generateId();
         const workout_id = generateId();
 
-        await safeInsert("workout_blocks", [
+        await safeInsert("program_schedule", [
           {
-            block_id: workout_id,
-            workout_id,
+            schedule_id,
+            program_id,
             user_id,
-            block_order: 1,
-            block_title: `${day.day || "Unknown Day"} - ${day.focus_area || "General"}`,
-            block_type: day.structure_type || "Unstructured",
-            rounds: null,
-            duration_seconds: (day.duration_min || 0) * 60,
-            notes: day.quote || "",
+            block_id,
+            week_number: week.week_number,
+            day_number: day.day_number,
+            day_of_week: day.day,
+            focus_area: day.focus_area,
+            is_generated: true,
+            is_rest_day: day.structure_type.toLowerCase().includes("rest"),
+            status: "planned",
+            schedule_date: null,
             created_at: new Date().toISOString(),
           },
         ]);
 
+        await safeInsert("workouts", [
+          {
+            workout_id,
+            schedule_id,
+            user_id,
+            workout_name: day.title,
+            duration_minutes: day.duration_min,
+            quote: day.quote,
+            structure_type: day.structure_type,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            version_number: 1,
+          },
+        ]);
+
         const sections = [
-          { type: "warmup", list: day.warmup || [] },
-          { type: "main_set", list: day.main_set || [] },
-          { type: "cooldown", list: day.cooldown || [] },
+          { type: "Warmup", list: day.warmup || [] },
+          { type: "Workout", list: day.main_set || [] },
+          { type: "Cooldown", list: day.cooldown || [] },
         ];
 
         let seq = 1;
@@ -221,9 +217,9 @@ export const insertProgramData = async (parsed, profile) => {
               {
                 id: generateId(),
                 user_id,
-                program_id,
                 schedule_id,
-                block_id: workout_id,
+                workout_id,
+                block_id: null,
                 workout_section: section.type,
                 sequence_num: seq++,
                 exercise_name: ex.name ?? "Unnamed",
