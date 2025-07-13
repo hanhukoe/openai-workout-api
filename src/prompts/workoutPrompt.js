@@ -1,18 +1,18 @@
-export function buildPrompt(profile) {
-  const { intake, availability, limitations, benchmarks, blackout, equipment, styles } = profile;
+// /src/prompts/workoutPrompt.js
 
-  const goal = intake.primary_goal;
-  const weeks = intake.program_duration_weeks;
-  const daysPerWeek = availability.days_per_week || 4;
-  const sessionLength = availability.session_length_minutes || 45;
-  const unavailable = blackout.recurring_day || [];
-  const fitnessLevel = benchmarks.fitness_level || "Intermediate";
-  const trainingPreferences = styles.styles_likes || "Not specified";
-  const dislikes = styles.styles_dislikes || "None";
-
-  const equipmentList = equipment.flatMap(e => e.equipment_list || []);
-  const equipmentStr = equipmentList.length > 0 ? equipmentList.join(", ") : "bodyweight only";
-  const limitationsText = limitations.limitations_list || "none";
+export function buildWorkoutPrompt(profile) {
+  const {
+    goal,
+    weeks,
+    fitnessLevel,
+    trainingPreferences,
+    dislikes,
+    daysPerWeek,
+    sessionLength,
+    unavailableDays,
+    limitationsText,
+    equipmentSummary,
+  } = profile;
 
   const promptLines = [
     "You are a highly experienced personal trainer specializing in:",
@@ -29,9 +29,9 @@ export function buildPrompt(profile) {
     `- Avoided Styles: ${dislikes}`,
     `- Max Training Days/Week: ${daysPerWeek}`,
     `- Session Length: ~${sessionLength} min ±5`,
-    `- Unavailable Days: ${unavailable.join(", ") || "none"}`,
+    `- Unavailable Days: ${unavailableDays.join(", ") || "none"}`,
     `- Physical Limitations: ${limitationsText}`,
-    `- Available Equipment: ${equipmentStr}`,
+    `- Available Equipment: ${equipmentSummary}`,
     "",
     "-- PROGRAM DESIGN --",
     `1. Build a full ${weeks}-week program, structured into 3–5 clear training blocks (e.g., Base, Build, Peak, Taper) that support the client's goal.`,
@@ -55,35 +55,8 @@ export function buildPrompt(profile) {
     "Return ONLY valid JSON with the following structure (no markdown, no extra commentary):",
     `{
   "program_title": "string",
-  "blocks": [
-    {
-      "title": "string",
-      "block_goal": "string",
-      "block_summary": "string",
-      "week_range": [start_week, end_week]
-    }
-  ],
-  "daily_workouts": [
-    {
-      "title": "string",
-      "week_number": integer (1–3),
-      "day_number": integer (1–7),
-      "duration_min": integer,
-      "focus_area": "string",
-      "structure_type": "string",
-      "quote_text": "string (max 100 characters)",
-      "warmup": [ { "name": "string" } ],
-      "main_set": [
-        {
-          "name": "string",
-          "sets": integer,
-          "reps": integer,
-          "rest_after_sec": integer
-        }
-      ],
-      "cooldown": [ { "name": "string" } ]
-    }
-  ]
+  "blocks": [ { ... } ],
+  "daily_workouts": [ { ... } ]
 }`,
     "Include ONLY the fields exactly as described — do NOT add extra keys or fields.",
     `Return the full program structure covering all ${weeks} weeks in the "blocks" section.`,
@@ -101,7 +74,9 @@ export function buildPrompt(profile) {
     "- Dislikes may be used sparingly if justified.",
     "- Respect physical limitations — do NOT assign unsafe exercises.",
     "- Include progressive overload where applicable.",
-    "- quote_text must be motivational and under 100 characters."
+    "- quote_text must be motivational and under 100 characters.",
+    "",
+    "End your response with this marker: ---END---"
   ];
 
   const prompt = promptLines.join("\n");
@@ -113,9 +88,9 @@ export function buildPrompt(profile) {
     daysPerWeek,
     sessionLength,
     trainingPreferences,
-    unavailable,
+    unavailable: unavailableDays,
     limitations: limitationsText,
-    equipmentCount: equipmentList.length
+    equipment: equipmentSummary,
   };
 
   return { prompt, promptMeta };
