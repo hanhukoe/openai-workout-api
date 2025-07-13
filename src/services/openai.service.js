@@ -15,7 +15,13 @@ const headersWithAuth = {
   "Content-Type": "application/json",
 };
 
-export async function generateOpenAIResponse(prompt, promptMeta, user_id) {
+export async function generateOpenAIResponse({
+  prompt,
+  promptMeta,
+  user_id,
+  version_number = 1,
+  generation_type = "initial",
+}) {
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -33,10 +39,10 @@ export async function generateOpenAIResponse(prompt, promptMeta, user_id) {
       }),
     });
 
-    const raw = await response.json();
+    const openaiResponse = await response.json();
 
-    const rawContent = raw.choices?.[0]?.message?.content || "";
-    const usage = raw.usage || {};
+    const rawContent = openaiResponse.choices?.[0]?.message?.content || "";
+    const usage = openaiResponse.usage || {};
     const prompt_tokens = usage.prompt_tokens || 0;
     const completion_tokens = usage.completion_tokens || 0;
     const total_tokens = prompt_tokens + completion_tokens;
@@ -56,7 +62,8 @@ export async function generateOpenAIResponse(prompt, promptMeta, user_id) {
           user_id,
           program_id: null,
           source: "openai",
-          version_number: 1,
+          version_number,
+          generation_type,
           prompt_input: promptMeta,
           prompt_output: rawContent,
           prompt_tokens,
@@ -70,14 +77,14 @@ export async function generateOpenAIResponse(prompt, promptMeta, user_id) {
 
     return {
       rawContent,
-      tokensUsed: {
+      usage: {
         prompt_tokens,
         completion_tokens,
         total_tokens,
         estimated_cost_usd,
       },
+      logId: program_generation_id,
     };
-
   } catch (err) {
     console.error("🔥 Error in OpenAI service:", err.message);
     throw err;
