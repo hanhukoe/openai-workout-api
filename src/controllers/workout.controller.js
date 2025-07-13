@@ -77,15 +77,21 @@ export const generateWorkoutPlan = async (req, res) => {
       max_tokens: 8000, 
     });
 
-  // ✅ Step 1: Parse OpenAI response safely
+  // ✅ Step 1: Clean and parse OpenAI response safely
   let parsedProgram;
+  let cleanContent = rawContent.trim();
+  if (cleanContent.endsWith("---END---")) {
+    cleanContent = cleanContent.slice(0, -8).trim(); // Remove ---END---
+  }
+  
   try {
-    parsedProgram = JSON.parse(rawContent);
+    parsedProgram = JSON.parse(cleanContent);
   } catch (parseErr) {
     console.error("🧨 Failed to parse OpenAI JSON:", parseErr.message);
     return res.status(500).json({ error: "Failed to parse OpenAI response JSON" });
   }
-  
+
+    
   // ✅ Step 2: Insert into `program` table
   let program_id;
   try {
