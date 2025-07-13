@@ -1,5 +1,6 @@
 import { buildWorkoutPrompt } from "../prompts/workoutPrompt.js";
 import { generateOpenAIResponse } from "../services/openai.service.js";
+import { buildClientProfile } from "../utils/buildClientProfile.js";
 import fetch from "node-fetch";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -38,26 +39,17 @@ export const generateWorkoutPlan = async (req, res) => {
       return res.status(404).json({ error: "Intake data not found" });
     }
 
-    const intake = intakeData[0];
-    const limitations = limitationsData[0] || {};
-    const benchmarks = benchmarkData[0] || {};
-    const availability = availabilityData[0] || {};
-
-    // Construct client profile for GPT
-    const clientProfile = {
+    const clientProfile = buildClientProfile({
       user_id,
-      goal: intake.primary_goal,
-      target_date: intake.primary_goal_date,
-      program_duration_weeks: intake.program_duration_weeks,
-      days_per_week: intake.days_per_week ?? 4,
-      session_length_minutes: intake.session_length_minutes ?? 45,
-      unavailable_days: availability.unavailable_days || [],
-      limitations: limitations.limitations_list || "",
-      fitness_level: benchmarks.fitness_level || "Intermediate",
-      full_service_gyms: gyms.map((g) => ({ gym_name: g.gym_name, access: g.access })),
-      boutique_studios: boutiques.map((b) => ({ studio_name: b.studio_name, credits_remaining: b.credits_remaining })),
-      home_equipment: equipment.flatMap((e) => e.equipment_list || []),
-    };
+      intake: intakeData[0],
+      gyms,
+      boutiques,
+      equipment,
+      limitations: limitationsData[0],
+      benchmarks: benchmarkData[0],
+      availability: availabilityData[0],
+    });
+    
 
     // Build prompt and call OpenAI
     const { prompt, promptMeta } = buildWorkoutPrompt(clientProfile);
