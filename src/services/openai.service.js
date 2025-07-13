@@ -38,16 +38,19 @@ export async function generateOpenAIResponse({
       }),
     });
 
+    // This replaces: const openaiResponse = await response.json();
     let openaiResponse;
+    let rawText;
+    
     try {
-      openaiResponse = await response.json();
+      rawText = await response.text(); // Only read the body ONCE
+      openaiResponse = JSON.parse(rawText);
     } catch (err) {
       console.error("❌ Failed to parse OpenAI response JSON:", err.message);
-      const rawText = await response.text();
-      console.error("📦 Raw OpenAI response:", rawText);
+      console.error("📦 Raw OpenAI response body:", rawText);
       throw new Error("OpenAI API returned malformed JSON or failed silently.");
     }
-
+    
     if (!response.ok) {
       console.error("❌ OpenAI API returned error:", openaiResponse);
       throw new Error(openaiResponse.error?.message || "Unknown error from OpenAI");
