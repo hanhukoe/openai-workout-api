@@ -39,6 +39,8 @@ export const generateWorkoutPlan = async (req, res) => {
       return res.status(404).json({ error: "Intake data not found" });
     }
 
+
+    // Build adn clean up client profile
     const clientProfile = buildClientProfile({
       user_id,
       intake: intakeData[0],
