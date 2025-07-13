@@ -3,10 +3,20 @@ import workoutRoutes from "./routes/workout.route.js";
 
 const app = express();
 
-// Middleware to parse incoming JSON bodies
+// Parse incoming JSON
 app.use(express.json());
 
-// Mounts routes defined in workout.route.js at "/workout"
+// Mount routes
 app.use("/workout", workoutRoutes);
+
+// Optional base route
+app.get("/", (req, res) => {
+  res.send("👋 HYROX Workout API is running!");
+});
+
+// Catch-all 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
 
 export default app;
