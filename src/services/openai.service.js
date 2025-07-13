@@ -30,14 +30,15 @@ export async function generateOpenAIResponse({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4-turbo-preview",
-        temperature: 0.7,
-        max_tokens: 8000, // ✅ explicit limit
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: JSON.stringify(promptMeta, null, 2) },
-        ],
-      }),
+      model: "gpt-4-turbo-preview",
+      temperature: 0.7,
+      max_tokens: 4000, // ✅ lowered to avoid cap error
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: JSON.stringify(promptMeta, null, 2) }
+      ],
+    }),
+
     });
 
     // ✅ Safe parsing of OpenAI response
