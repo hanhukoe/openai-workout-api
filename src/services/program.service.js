@@ -17,7 +17,6 @@ const headersWithAuth = {
  */
 export async function insertProgram({
   user_id,
-  intake_id,
   program_title,
   goal_summary,
   program_duration_weeks,
@@ -30,7 +29,6 @@ export async function insertProgram({
     {
       program_id,
       user_id,
-      intake_id,
       program_title,
       goal_summary,
       program_duration_weeks,
