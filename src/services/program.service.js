@@ -41,7 +41,7 @@ export async function insertProgram({
     },
   ];
 
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/program`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/programs`, {
     method: "POST",
     headers: headersWithAuth,
     body: JSON.stringify(payload),
