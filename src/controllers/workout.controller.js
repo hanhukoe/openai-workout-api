@@ -101,6 +101,7 @@ export const generateWorkoutPlan = async (req, res) => {
     program_id = await insertProgram({
       user_id,
       intake_id: intakeData[0].intake_id,
+      program_generation_id: logId, // 👈 this is the UUID from the log insert
       program_title: parsedProgram.program_title,
       goal_summary: promptMeta.goal,
       program_duration_weeks: promptMeta.weeks,
