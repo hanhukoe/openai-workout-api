@@ -60,7 +60,6 @@ export async function generateOpenAIResponse({
         program_id: null,
         source: "openai",
         version_number,
-        generation_type,
         prompt_input: promptMeta,
         prompt_output: rawContent,
         prompt_tokens,
