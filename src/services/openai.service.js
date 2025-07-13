@@ -1,3 +1,20 @@
+// /src/services/openai.service.js
+
+import fetch from "node-fetch";
+import crypto from "crypto";
+import { config } from "dotenv";
+config();
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const headersWithAuth = {
+  apikey: SUPABASE_SERVICE_ROLE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  "Content-Type": "application/json",
+};
+
 export async function generateOpenAIResponse({
   prompt,
   promptMeta,
