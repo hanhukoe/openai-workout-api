@@ -77,36 +77,42 @@ export const generateWorkoutPlan = async (req, res) => {
       max_tokens: 8000, 
     });
 
-// ✅ Step 1: Parse OpenAI response safely
-let parsedProgram;
-try {
-  parsedProgram = JSON.parse(rawContent);
-} catch (parseErr) {
-  console.error("🧨 Failed to parse OpenAI JSON:", parseErr.message);
-  return res.status(500).json({ error: "Failed to parse OpenAI response JSON" });
-}
-
-// ✅ Step 2: Insert into `program` table
-let program_id;
-try {
-  program_id = await insertProgram({
-    user_id,
-    intake_id: intakeData[0].intake_id,
-    program_title: parsedProgram.program_title,
-    goal_summary: promptMeta.goal,
-    program_duration_weeks: promptMeta.weeks,
-    timezone: clientProfile.timezone || "UTC",
-    program_start_date: new Date().toISOString().split("T")[0], // Optional default
+  // ✅ Step 1: Parse OpenAI response safely
+  let parsedProgram;
+  try {
+    parsedProgram = JSON.parse(rawContent);
+  } catch (parseErr) {
+    console.error("🧨 Failed to parse OpenAI JSON:", parseErr.message);
+    return res.status(500).json({ error: "Failed to parse OpenAI response JSON" });
+  }
+  
+  // ✅ Step 2: Insert into `program` table
+  let program_id;
+  try {
+    program_id = await insertProgram({
+      user_id,
+      intake_id: intakeData[0].intake_id,
+      program_title: parsedProgram.program_title,
+      goal_summary: promptMeta.goal,
+      program_duration_weeks: promptMeta.weeks,
+      timezone: clientProfile.timezone || "UTC",
+      program_start_date: new Date().toISOString().split("T")[0], // Optional default
+    });
+  } catch (insertErr) {
+    console.error("❌ Failed to insert program:", insertErr.message);
+    return res.status(500).json({ error: "Program insert failed", details: insertErr.message });
+  }
+  
+  // ✅ Final: Return success response
+  return res.status(200).json({
+    message: "🎉 Program inserted successfully",
+    program_id,
+    log_id: logId,
+    usage,
   });
-} catch (insertErr) {
-  console.error("❌ Failed to insert program:", insertErr.message);
-  return res.status(500).json({ error: "Program insert failed", details: insertErr.message });
-}
-
-// ✅ Final: Return success response
-return res.status(200).json({
-  message: "🎉 Program inserted successfully",
-  program_id,
-  log_id: logId,
-  usage,
-});
+    
+  } catch (err) {
+    console.error("🔥 Controller Error:", err);
+    return res.status(500).json({ error: "Unexpected server error", details: err.message });
+  }
+}; 
