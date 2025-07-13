@@ -75,12 +75,11 @@ export async function generateOpenAIResponse({
       console.warn("⚠️ OpenAI response may be incomplete — missing expected ---END--- marker.");
     }
 
-    // 🔄 Insert log into Supabase
+    // 🔄 Insert log into Supabase program_generation_log
     const payload = [
       {
         program_generation_id,
         user_id,
-        program_id: null,
         source: "openai",
         version_number,
         prompt_input: {
