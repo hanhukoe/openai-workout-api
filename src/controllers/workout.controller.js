@@ -126,3 +126,69 @@ export const generateWorkoutPlan = async (req, res) => {
     return res.status(500).json({ error: "Unexpected server error", details: err.message });
   }
 }; 
+
+export const processProgramFromLog = async (req, res) => {
+  const { program_generation_id } = req.body;
+  if (!program_generation_id) {
+    return res.status(400).json({ error: "Missing program_generation_id" });
+  }
+
+  try {
+    // Fetch the log from Supabase
+    const logRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/program_generation_log?program_generation_id=eq.${program_generation_id}`,
+      { headers: headersWithAuth }
+    );
+    const logs = await logRes.json();
+
+    if (!logs.length) {
+      return res.status(404).json({ error: "Generation log not found" });
+    }
+
+    const log = logs[0];
+
+    // 🧹 Clean and parse the prompt_output
+    let cleanOutput = log.prompt_output?.trim() || "";
+    const endMarker = "---END---";
+    const endIndex = cleanOutput.lastIndexOf(endMarker);
+    if (endIndex !== -1) {
+      cleanOutput = cleanOutput.slice(0, endIndex).trim();
+    }
+
+    let parsedProgram;
+    try {
+      parsedProgram = JSON.parse(cleanOutput);
+    } catch (err) {
+      console.error("❌ Failed to parse stored JSON:", err.message);
+      return res.status(500).json({ error: "Failed to parse stored OpenAI JSON" });
+    }
+
+    // 🧠 Parse prompt_input to get metadata
+    let promptMeta = {};
+    try {
+      promptMeta = JSON.parse(log.prompt_input)?.prompt_meta || {};
+    } catch {
+      console.warn("⚠️ Could not parse prompt_input meta");
+    }
+
+    // ✅ Insert into programs
+    const program_id = await insertProgram({
+      user_id: log.user_id,
+      program_generation_id: log.program_generation_id,
+      program_title: parsedProgram.program_title,
+      goal_summary: promptMeta.goal,
+      program_duration_weeks: promptMeta.weeks,
+      timezone: "UTC", // You could optionally make this smarter
+      program_start_date: new Date().toISOString().split("T")[0],
+    });
+
+    return res.status(200).json({
+      message: "🎯 Program inserted from stored log",
+      program_id,
+    });
+  } catch (err) {
+    console.error("🔥 processProgramFromLog error:", err);
+    return res.status(500).json({ error: "Unexpected error", details: err.message });
+  }
+};
+
