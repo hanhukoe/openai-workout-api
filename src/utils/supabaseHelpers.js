@@ -17,7 +17,10 @@ const headersWithAuth = {
 export async function supabaseInsert(table, payload) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
-    headers: headersWithAuth,
+    headers: {
+      ...headersWithAuth,
+      Prefer: "return=representation", // ✅ Add this line here
+    },
     body: JSON.stringify(payload),
   });
 
@@ -25,21 +28,21 @@ export async function supabaseInsert(table, payload) {
   let data;
 
   try {
-      data = text ? JSON.parse(text) : null;
-    } catch (err) {
-      console.error(`❌ Failed to parse Supabase insert response JSON:`, err.message);
-      console.error(`📦 Raw Supabase response body:`, text);
-      throw new Error(`Supabase response was not valid JSON`);
-    }
-  
-    if (!res.ok) {
-      console.error(`❌ Supabase insert failed for ${table}:`, data);
-      throw new Error(`Insert error in ${table}`);
-    }
-  
-    console.log(`✅ Inserted ${Array.isArray(payload) ? payload.length : 1} row(s) into ${table}`);
-    return data;
+    data = text ? JSON.parse(text) : null;
+  } catch (err) {
+    console.error(`❌ Failed to parse Supabase insert response JSON:`, err.message);
+    console.error(`📦 Raw Supabase response body:`, text);
+    throw new Error(`Supabase response was not valid JSON`);
   }
+
+  if (!res.ok) {
+    console.error(`❌ Supabase insert failed for ${table}:`, data);
+    throw new Error(`Insert error in ${table}`);
+  }
+
+  console.log(`✅ Inserted ${Array.isArray(payload) ? payload.length : 1} row(s) into ${table}`);
+  return data;
+}
 
 
   if (!res.ok) {
