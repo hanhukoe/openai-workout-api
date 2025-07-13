@@ -1,20 +1,18 @@
 // /src/prompts/workoutPrompt.js
 
 export function buildWorkoutPrompt(profile) {
-  const { intake, availability, limitations, benchmarks, blackout, equipment, styles } = profile;
-
-  const goal = intake.primary_goal;
-  const weeks = intake.program_duration_weeks;
-  const daysPerWeek = availability.days_per_week || 4;
-  const sessionLength = availability.session_length_minutes || 45;
-  const unavailable = blackout.recurring_day || [];
-  const fitnessLevel = benchmarks.fitness_level || "Intermediate";
-  const trainingPreferences = styles.styles_likes || "Not specified";
-  const dislikes = styles.styles_dislikes || "None";
-
-  const equipmentList = equipment.flatMap(e => e.equipment_list || []);
-  const equipmentStr = equipmentList.length > 0 ? equipmentList.join(", ") : "bodyweight only";
-  const limitationsText = limitations.limitations_list || "none";
+  const {
+    goal,
+    weeks,
+    fitnessLevel,
+    trainingPreferences,
+    dislikes,
+    daysPerWeek,
+    sessionLength,
+    unavailableDays,
+    limitationsText,
+    equipmentSummary,
+  } = profile;
 
   const promptLines = [
     "You are a highly experienced personal trainer specializing in:",
@@ -88,9 +86,9 @@ export function buildWorkoutPrompt(profile) {
     daysPerWeek,
     sessionLength,
     trainingPreferences,
-    unavailable,
+    unavailable: unavailableDays,
     limitations: limitationsText,
-    equipmentCount: equipmentList.length
+    equipment: equipmentSummary,
   };
 
   return { prompt, promptMeta };
