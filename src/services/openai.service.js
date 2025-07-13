@@ -20,7 +20,6 @@ export async function generateOpenAIResponse({
   promptMeta,
   user_id,
   version_number = 1,
-  generation_type = "initial",
 }) {
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
