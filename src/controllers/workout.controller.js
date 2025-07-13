@@ -80,8 +80,11 @@ export const generateWorkoutPlan = async (req, res) => {
   // ✅ Step 1: Clean and parse OpenAI response safely
   let parsedProgram;
   let cleanContent = rawContent.trim();
-  if (cleanContent.endsWith("---END---")) {
-    cleanContent = cleanContent.slice(0, -8).trim(); // Remove ---END---
+  const endMarker = "---END---";
+  const endIndex = cleanContent.lastIndexOf(endMarker);
+  
+  if (endIndex !== -1) {
+    cleanContent = cleanContent.slice(0, endIndex).trim(); // Remove marker and anything after
   }
   
   try {
