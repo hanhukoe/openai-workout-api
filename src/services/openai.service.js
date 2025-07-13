@@ -60,4 +60,59 @@ export async function generateOpenAIResponse({
     // 🔄 Insert log into Supabase
     const payload = [
       {
-        program_ge_
+        program_generation_id,
+        user_id,
+        program_id: null,
+        source: "openai",
+        version_number,
+        prompt_input: {
+          prompt_text: prompt, // ✅ system prompt
+          prompt_meta: promptMeta, // ✅ user input
+        },
+        prompt_output: rawContent, // ✅ raw OpenAI response
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        estimated_cost_usd,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
+      method: "POST",
+      headers: headersWithAuth,
+      body: JSON.stringify(payload),
+    });
+
+    // ✅ Safe parsing of Supabase response
+    let supabaseData;
+    let supabaseRaw;
+    try {
+      supabaseRaw = await res.text();
+      supabaseData = JSON.parse(supabaseRaw);
+    } catch (err) {
+      console.error("❌ Failed to parse Supabase insert response JSON:", err.message);
+      console.error("📦 Raw Supabase response body:", supabaseRaw);
+    }
+
+    if (!res.ok) {
+      console.error("❌ Failed to insert into program_generation_log:", supabaseData);
+    } else {
+      console.log("✅ Log inserted into program_generation_log");
+    }
+
+    return {
+      rawContent,
+      usage: {
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        estimated_cost_usd,
+      },
+      logId: program_generation_id,
+    };
+  } catch (err) {
+    console.error("🔥 Error in OpenAI service:", err.message);
+    throw err;
+  }
+}
