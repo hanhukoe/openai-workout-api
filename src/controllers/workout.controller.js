@@ -17,41 +17,53 @@ export const generateWorkoutPlan = async (req, res) => {
   if (!user_id) return res.status(400).json({ error: "Missing user_id" });
 
   try {
-    // Fetch intake-related data from Supabase
-    const fetchFromSupabase = async (table) => {
-      const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
-      const response = await fetch(url, { headers: headersWithAuth });
-      if (!response.ok) return null;
-      return await response.json();
-    };
-
-    const [intakeData, gyms, boutiques, equipment, limitationsData, benchmarkData, availabilityData] = await Promise.all([
-      fetchFromSupabase("program_intake"),
-      fetchFromSupabase("full_service_gyms"),
-      fetchFromSupabase("boutique_credits"),
-      fetchFromSupabase("home_equipment"),
-      fetchFromSupabase("limitations"),
-      fetchFromSupabase("benchmark_log"),
-      fetchFromSupabase("availability"),
-    ]);
-
-    if (!intakeData || intakeData.length === 0) {
-      return res.status(404).json({ error: "Intake data not found" });
-    }
-
-
-    // Build adn clean up client profile
-    const clientProfile = buildClientProfile({
-      user_id,
-      intake: intakeData[0],
-      gyms,
-      boutiques,
-      equipment,
-      limitations: limitationsData[0],
-      benchmarks: benchmarkData[0],
-      availability: availabilityData[0],
-    });
-    
+        // Fetch intake-related data from Supabase
+        const fetchFromSupabase = async (table) => {
+          const url = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${user_id}`;
+          const response = await fetch(url, { headers: headersWithAuth });
+          if (!response.ok) return null;
+          return await response.json();
+        };
+        
+        const [
+          intakeData,
+          gyms,
+          boutiques,
+          equipment,
+          limitationsData,
+          benchmarkData,
+          availabilityData,
+          blackoutData,
+          stylesData
+        ] = await Promise.all([
+          fetchFromSupabase("program_intake"),
+          fetchFromSupabase("full_service_gyms"),
+          fetchFromSupabase("boutique_credits"),
+          fetchFromSupabase("home_equipment"),
+          fetchFromSupabase("limitations"),
+          fetchFromSupabase("benchmark_log"),
+          fetchFromSupabase("availability"),
+          fetchFromSupabase("blackout_dates"),
+          fetchFromSupabase("workout_styles")
+        ]);
+        
+        if (!intakeData || intakeData.length === 0) {
+          return res.status(404).json({ error: "Intake data not found" });
+        }
+        
+        // Build and clean up client profile
+        const clientProfile = buildClientProfile({
+          user_id,
+          intake: intakeData[0],
+          gyms,
+          boutiques,
+          equipment,
+          limitations: limitationsData[0],
+          benchmarks: benchmarkData[0],
+          availability: availabilityData[0],
+          blackout: blackoutData[0],
+          styles: stylesData[0]
+        });
 
     // Build prompt and call OpenAI
     const { prompt, promptMeta } = buildWorkoutPrompt(clientProfile);
