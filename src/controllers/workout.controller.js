@@ -73,6 +73,7 @@ export const generateWorkoutPlan = async (req, res) => {
       user_id,
       version_number: 1,
       generation_type: "initial",
+      max_tokens: 8000, 
     });
 
     // For now, just return raw
