@@ -1,5 +1,5 @@
 import express from "express";
-import workoutRoutes from "./routes/workout.route.js";
+import workoutRoutes from "./src/routes/workout.route.js";
 
 const app = express();
 
