@@ -22,6 +22,7 @@ export async function generateOpenAIResponse({
   version_number = 1,
 }) {
   try {
+    // 🔥 Call OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -38,36 +39,36 @@ export async function generateOpenAIResponse({
       }),
     });
 
-    // This replaces: const openaiResponse = await response.json();
+    // ✅ Safe parsing of OpenAI response
     let openaiResponse;
     let rawText;
-    
     try {
-      rawText = await response.text(); // Only read the body ONCE
+      rawText = await response.text(); // Read once
       openaiResponse = JSON.parse(rawText);
     } catch (err) {
       console.error("❌ Failed to parse OpenAI response JSON:", err.message);
       console.error("📦 Raw OpenAI response body:", rawText);
       throw new Error("OpenAI API returned malformed JSON or failed silently.");
     }
-    
+
     if (!response.ok) {
       console.error("❌ OpenAI API returned error:", openaiResponse);
       throw new Error(openaiResponse.error?.message || "Unknown error from OpenAI");
     }
 
+    // Extract data
     const rawContent = openaiResponse.choices?.[0]?.message?.content || "";
     const usage = openaiResponse.usage || {};
     const prompt_tokens = usage.prompt_tokens || 0;
     const completion_tokens = usage.completion_tokens || 0;
     const total_tokens = prompt_tokens + completion_tokens;
-
     const estimated_cost_usd = Number(
       ((prompt_tokens / 1000) * 0.01 + (completion_tokens / 1000) * 0.03).toFixed(4)
     );
 
     const program_generation_id = crypto.randomUUID();
 
+    // 🔄 Insert log into Supabase
     const payload = [
       {
         program_generation_id,
@@ -91,9 +92,19 @@ export async function generateOpenAIResponse({
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    // ✅ Safe parsing of Supabase response
+    let supabaseData;
+    let supabaseRaw;
+    try {
+      supabaseRaw = await res.text();
+      supabaseData = JSON.parse(supabaseRaw);
+    } catch (err) {
+      console.error("❌ Failed to parse Supabase insert response JSON:", err.message);
+      console.error("📦 Raw Supabase response body:", supabaseRaw);
+    }
+
     if (!res.ok) {
-      console.error("❌ Failed to insert into program_generation_log:", data);
+      console.error("❌ Failed to insert into program_generation_log:", supabaseData);
     } else {
       console.log("✅ Log inserted into program_generation_log");
     }
