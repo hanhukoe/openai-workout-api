@@ -53,27 +53,36 @@ export async function generateOpenAIResponse({
 
     const program_generation_id = crypto.randomUUID();
 
-    await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
+    const payload = [
+      {
+        program_generation_id,
+        user_id,
+        program_id: null,
+        source: "openai",
+        version_number,
+        generation_type,
+        prompt_input: promptMeta,
+        prompt_output: rawContent,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        estimated_cost_usd,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/program_generation_log`, {
       method: "POST",
       headers: headersWithAuth,
-      body: JSON.stringify([
-        {
-          program_generation_id,
-          user_id,
-          program_id: null,
-          source: "openai",
-          version_number,
-          generation_type,
-          prompt_input: promptMeta,
-          prompt_output: rawContent,
-          prompt_tokens,
-          completion_tokens,
-          total_tokens,
-          estimated_cost_usd,
-          created_at: new Date().toISOString(),
-        },
-      ]),
+      body: JSON.stringify(payload),
     });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("❌ Failed to insert into program_generation_log:", data);
+    } else {
+      console.log("✅ Log inserted into program_generation_log");
+    }
 
     return {
       rawContent,
