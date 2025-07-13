@@ -74,8 +74,7 @@ export function buildWorkoutPrompt(profile) {
     "- Dislikes may be used sparingly if justified.",
     "- Respect physical limitations — do NOT assign unsafe exercises.",
     "- Include progressive overload where applicable.",
-    "- quote_text must be motivational and under 100 characters.",
-    "- End your response with this marker: ---END---"
+    "- quote_text must be motivational and under 100 characters."
   ];
 
   const prompt = promptLines.join("\n");
