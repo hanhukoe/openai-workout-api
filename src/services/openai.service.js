@@ -38,7 +38,20 @@ export async function generateOpenAIResponse({
       }),
     });
 
-    const openaiResponse = await response.json();
+    let openaiResponse;
+    try {
+      openaiResponse = await response.json();
+    } catch (err) {
+      console.error("❌ Failed to parse OpenAI response JSON:", err.message);
+      const rawText = await response.text();
+      console.error("📦 Raw OpenAI response:", rawText);
+      throw new Error("OpenAI API returned malformed JSON or failed silently.");
+    }
+
+    if (!response.ok) {
+      console.error("❌ OpenAI API returned error:", openaiResponse);
+      throw new Error(openaiResponse.error?.message || "Unknown error from OpenAI");
+    }
 
     const rawContent = openaiResponse.choices?.[0]?.message?.content || "";
     const usage = openaiResponse.usage || {};
